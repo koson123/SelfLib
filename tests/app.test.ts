@@ -199,6 +199,17 @@ test('fixture sources sync, credentials remain private, cache survives outages a
       );
       assert.equal((await waitSync(h, id)).health, 'ready');
     }
+    for (const [category, count] of [
+      ['books', 0],
+      ['audiobooks', 1],
+      ['comics', 1],
+      ['manga', 0],
+      ['movies', 1],
+      ['shows', 1],
+    ] as const) {
+      assert.equal((await h.request('/api/items?category=' + category)).json.total, count);
+    }
+    assert.equal((await h.request('/api/items?category=invalid')).response.status, 400);
     const sourceResponse = await h.request('/api/sources');
     assert.ok(!sourceResponse.text.includes(secret));
     const secrets = h.instance.db.prepare('SELECT secret FROM sources').all() as {
@@ -466,6 +477,60 @@ test('malformed and over-limit catalog responses retain the last complete synchr
     assert.equal((await h.request('/api/sources/' + id, 'DELETE', {})).response.status, 200);
     assert.equal((await h.request('/api/items')).json.total, 0);
     assert.ok(!fixture.requests.some((r) => r.method === 'DELETE'));
+  } finally {
+    await h.close();
+    await fixture.close();
+    rmSync(h.dir, { recursive: true, force: true });
+  }
+});
+
+test('Jellyfin viewer sign-in exchanges passwords server-side and stores only encrypted tokens', async () => {
+  const fixture = await fixtureServer();
+  const h = await harness();
+  try {
+    await h.setup();
+    const body = {
+      type: 'jellyfin',
+      name: 'Viewer',
+      url: fixture.url,
+      allowPrivate: true,
+      jellyfinUsername: 'fixture-viewer',
+      jellyfinPassword: 'fixture-viewer-password',
+    };
+    const denied = await h.request('/api/sources/test', 'POST', {
+      ...body,
+      jellyfinPassword: 'wrong',
+    });
+    assert.equal(denied.response.status, 502);
+    assert.match(denied.text, /Authentication failed/);
+    const tested = await h.request('/api/sources/test', 'POST', body);
+    assert.equal(tested.response.status, 200);
+    assert.ok(!tested.text.includes(secret));
+    const saved = await h.request('/api/sources', 'POST', body);
+    assert.equal(saved.response.status, 201);
+    assert.ok(!saved.text.includes(secret));
+    const row = h.instance.db
+      .prepare('SELECT * FROM sources WHERE id=?')
+      .get(String(saved.json.id))!;
+    assert.ok(!JSON.stringify(row).includes(body.jellyfinPassword));
+    assert.equal(decrypt(String(row.secret), readFileSync(join(h.dir, 'secrets.key'))), secret);
+    const listed = await h.request('/api/sources');
+    assert.ok(!listed.text.includes(secret) && !listed.text.includes(body.jellyfinPassword));
+    assert.equal(
+      (await h.request('/api/sources/' + saved.json.id + '/test', 'POST', {})).response.status,
+      200,
+    );
+    const wrongKey = await h.request('/api/sources/test', 'POST', {
+      ...body,
+      jellyfinUsername: undefined,
+      jellyfinPassword: undefined,
+      credential: 'fixture-server-wide-key',
+    });
+    assert.equal(wrongKey.response.status, 502);
+    assert.match(wrongKey.text, /viewer account access token/);
+    assert.ok(!wrongKey.text.includes('fixture-server-wide-key'));
+    const invalid = await h.request('/api/sources', 'POST', { ...body, type: 'komga' });
+    assert.equal(invalid.response.status, 400);
   } finally {
     await h.close();
     await fixture.close();

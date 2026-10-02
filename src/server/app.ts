@@ -14,9 +14,11 @@ import {
   token,
   digest,
   validateBase,
+  sourceTransport,
 } from './security.js';
 import { createAdapter } from './adapters.js';
 import { demoItems } from './demo.js';
+import { categoryKinds, shelfCategories } from '../shared.js';
 import type { CatalogItem, ItemView, SourceConfig, SourceType } from '../shared.js';
 
 type Row = Record<string, string | number | null | Uint8Array>;
@@ -45,9 +47,11 @@ const connectionSchema = z.object({
   publicUrl: z.string().max(2048).optional(),
   credential: z
     .string()
-    .min(1)
     .max(4096)
-    .refine((s) => !/[\r\n]/.test(s)),
+    .refine((s) => !/[\r\n]/.test(s))
+    .default(''),
+  jellyfinUsername: z.string().min(1).max(128).optional(),
+  jellyfinPassword: z.string().min(1).max(256).optional(),
   allowPrivate: z.boolean().default(false),
 });
 const collectionSchema = z.object({ name: z.string().trim().min(1).max(80) });
@@ -77,6 +81,7 @@ export function createApplication(options: AppOptions) {
     "UPDATE sources SET health='interrupted',error='Previous sync was interrupted. Cached catalog is retained; synchronize manually.' WHERE health='syncing'",
   ).run();
   const key = encryptionKey(options.dataDir);
+  if (db.prepare('SELECT id FROM owner').get()) seedDemo(db);
   const lockPath = join(options.dataDir, 'server.lock');
   writeFileSync(lockPath, String(process.pid), { mode: 0o600 });
   const setupPath = join(options.dataDir, 'setup.token');
@@ -273,14 +278,54 @@ export function createApplication(options: AppOptions) {
     if (!row) throw Object.assign(new Error('Source not found.'), { status: 404 });
     return sourceFrom(row);
   }
-  function inputSource(body: unknown, id: string = randomUUID()): SourceConfig {
+  async function inputSource(body: unknown, id: string = randomUUID()): Promise<SourceConfig> {
     const input = connectionSchema.parse(body);
-    return {
-      ...input,
+    const source: SourceConfig = {
       id,
+      type: input.type,
+      name: input.name,
+      allowPrivate: input.allowPrivate,
+      credential: input.credential,
       url: validateBase(input.url),
       publicUrl: validateBase(input.publicUrl || input.url),
     };
+    if (input.jellyfinPassword || input.jellyfinUsername) {
+      if (source.type !== 'jellyfin' || !input.jellyfinPassword || !input.jellyfinUsername)
+        throw Object.assign(
+          new Error('Jellyfin sign-in requires both viewer username and password.'),
+          { status: 400 },
+        );
+      const result = z
+        .object({
+          AccessToken: z
+            .string()
+            .min(1)
+            .max(4096)
+            .regex(/^[^\r\n]+$/),
+        })
+        .parse(
+          await sourceTransport(
+            { ...source, credential: '' },
+            {
+              Authorization:
+                'MediaBrowser Client="SelfLib", Device="SelfLib server", DeviceId="selflib-' +
+                id +
+                '", Version="0.1.0"',
+            },
+            options.allowLoopback,
+          ).json('/Users/AuthenticateByName', {
+            method: 'POST',
+            body: { Username: input.jellyfinUsername, Pw: input.jellyfinPassword },
+          }),
+        );
+      source.credential = result.AccessToken;
+    }
+    if (!source.credential)
+      throw Object.assign(
+        new Error('Enter an API key/user token, or sign in with a Jellyfin viewer account.'),
+        { status: 400 },
+      );
+    return source;
   }
   app.get('/api/sources', (_req, res) => {
     res.json({
@@ -294,20 +339,20 @@ export function createApplication(options: AppOptions) {
     });
   });
   app.post('/api/sources/test', async (req, res) => {
-    const source = inputSource(req.body);
     try {
+      const source = await inputSource(req.body);
       const result = await createAdapter(source, { allowLoopback: options.allowLoopback }).health();
       res.json({ ok: true, ...result });
     } catch (error) {
       res.status(502).json({ error: errorMessage(error) });
     }
   });
-  app.post('/api/sources', (req, res) => {
+  app.post('/api/sources', async (req, res) => {
     if (Number((db.prepare('SELECT count(*) AS n FROM sources').get() as Row).n) >= 10) {
       res.status(409).json({ error: 'This milestone supports up to 10 connections.' });
       return;
     }
-    const s = inputSource(req.body);
+    const s = await inputSource(req.body);
     db.prepare(
       'INSERT INTO sources (id,type,name,url,public_url,secret,allow_private) VALUES (?,?,?,?,?,?,?)',
     ).run(
@@ -321,13 +366,13 @@ export function createApplication(options: AppOptions) {
     );
     res.status(201).json({ id: s.id });
   });
-  app.put('/api/sources/:id', (req, res) => {
+  app.put('/api/sources/:id', async (req, res) => {
     const old = getSource(String(req.params.id));
     if (jobs.has(old.id)) {
       res.status(409).json({ error: 'Wait for synchronization to finish.' });
       return;
     }
-    const s = inputSource(
+    const s = await inputSource(
       { ...req.body, credential: req.body.credential || old.credential },
       old.id,
     );
@@ -443,7 +488,7 @@ export function createApplication(options: AppOptions) {
         throw error;
       }
       // Cache artwork after atomic catalog commit. Artwork failures do not discard a good catalog.
-      let warnings = 0;
+      const warnings = new Map<string, number>();
       let count = 0;
       for (const item of items) {
         if (closing || Date.now() > deadline) break;
@@ -463,13 +508,17 @@ export function createApplication(options: AppOptions) {
               image.mime,
               id,
             );
-        } catch {
-          warnings++;
+        } catch (error) {
+          const reason = errorMessage(error);
+          warnings.set(reason, (warnings.get(reason) || 0) + 1);
         }
       }
-      if (warnings)
+      if (warnings.size)
         db.prepare('UPDATE sources SET error=? WHERE id=?').run(
-          `${warnings} artwork request(s) failed or exceeded the limit. Catalog is available.`,
+          `Catalog is available; generated covers are used where artwork failed. ${[...warnings]
+            .slice(0, 4)
+            .map(([reason, count]) => `${count} × ${reason}`)
+            .join(' ')}`,
           source.id,
         );
       console.info(
@@ -528,6 +577,12 @@ export function createApplication(options: AppOptions) {
     if (req.query.section) {
       where.push('i.section=?');
       params.push(z.enum(['books', 'comics', 'movies']).parse(req.query.section));
+    }
+    if (req.query.category) {
+      const category = z.enum(shelfCategories).parse(req.query.category);
+      const kinds = categoryKinds[category];
+      where.push(`json_extract(i.data,'$.kind') IN (${kinds.map(() => '?').join(',')})`);
+      params.push(...kinds);
     }
     if (req.query.favorite === 'true') where.push('f.item_id IS NOT NULL');
     if (req.query.collection) {
@@ -646,6 +701,17 @@ export function createApplication(options: AppOptions) {
     }
     const status =
       typeof error === 'object' && error && 'status' in error ? Number(error.status) : 500;
+    if (error instanceof Error && /^(Source |Authentication |Endpoint )/.test(error.message)) {
+      res.status(502).json({ error: error.message });
+      return;
+    }
+    if (
+      error instanceof Error &&
+      /^(Jellyfin sign-in requires|Enter an API key\/user token)/.test(error.message)
+    ) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
     if (status >= 400 && status < 500) {
       res.status(status).json({ error: status === 404 ? 'Not found.' : 'Request rejected.' });
       return;

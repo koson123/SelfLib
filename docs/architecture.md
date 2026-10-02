@@ -17,7 +17,7 @@ The authenticated owner saves an encrypted connection. An adapter identifies the
 
 Items have stable SHA-256 identities derived from source UUID and remote item ID. Source item IDs remain available for handoff. When a successfully synchronized source removes an item, its local favorites/collection memberships cascade away. A failed or partial sync never treats unseen items as deletions.
 
-Catalog search and pagination happen in SQLite; the browser receives at most 100 items per request. Entrance previews fetch six items per section. Source requests use checked/pinned DNS, hardcoded endpoint paths, no redirects, deadlines and body limits. One safe retry is attempted for a failed page request caused by reachability or HTTP 5xx. No retry is attempted for invalid authentication, schema mismatch or unsafe destinations.
+Catalog search and pagination happen in SQLite; the browser receives at most 100 items per request. Entrance previews fetch six items per presentation category. `ShelfCategory` maps normalized `kind` to Books, Audiobooks, Comics, Manga, Movies, or TV Shows; API `category` filters the existing JSON metadata in SQLite. Coarse source sections and item identities remain stable. Source requests use checked/pinned DNS, hardcoded endpoint paths, no redirects, deadlines and body limits. One safe retry is attempted for a failed page request caused by reachability or HTTP 5xx. No retry is attempted for invalid authentication, schema mismatch or unsafe destinations.
 
 ## Adapter contract
 

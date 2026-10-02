@@ -8,11 +8,11 @@ SelfLib **0.1.0** is a single-owner first milestone. It connects to **Audiobooks
 
 ## What works
 
-- Responsive entrance, book/audiobook shelves, comic/manga volumes, and movie/TV cases.
+- Responsive entrance and separate Books, Audiobooks, Comics, Manga, Movies, and TV Shows shelves. Komga Manga classification requires an explicit book `Manga` tag.
 - Physical wooden bookcases with backboards, side posts and a plank under every row. Spine-first browsing, varied book heights/thicknesses, pull-out hover/focus interactions, a cover view, and keyboard-accessible detail dialogs.
-- Full-text metadata search, persistent favorites, and mixed collections.
+- Full-text metadata search, persistent favorites with filled animated hearts that move with covers, and mixed collections.
 - Source-reported reading/listening/watching progress as of the last manual sync.
-- Connection setup, testing, editing, removal, manual sync, health and timestamps.
+- Connection setup, testing, editing, removal, manual sync, health and timestamps. Jellyfin viewer sign-in exchanges passwords server-side for encrypted tokens.
 - Cached metadata and artwork remain available during source outages.
 - First-run owner wizard, local login/logout, server-side encrypted source credentials.
 - One Node process, SQLite, locally bundled assets, no runtime CDN or telemetry.
@@ -48,6 +48,10 @@ For LAN or HTTPS access, set `APP_URL` to the exact root URL used by your browse
 ## Screenshots
 
 These screenshots are captured from the running fictional demo; no source credentials or personal collections appear.
+
+![Spine titles and binding details](docs/screenshots/desktop-spines.jpg)
+
+![Filled favorite heart and confirmation](docs/screenshots/desktop-favorite.jpg)
 
 | Phone viewport                                                 | Tablet viewport                                                  |
 | -------------------------------------------------------------- | ---------------------------------------------------------------- |

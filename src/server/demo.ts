@@ -50,7 +50,7 @@ export const demoItems: CatalogItem[] = [
   ],
   [
     'comics',
-    'comic',
+    'manga',
     'Moon Harbor · Volume 1',
     'Sora Finch',
     'A fictional comic about a harbor where moonlight becomes a tide.',
@@ -58,7 +58,7 @@ export const demoItems: CatalogItem[] = [
   ],
   [
     'comics',
-    'comic',
+    'manga',
     'Moon Harbor · Volume 2',
     'Sora Finch',
     'The fictional harbor opens its gates to a new visitor.',

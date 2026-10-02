@@ -1960,3 +1960,144 @@ dialog::backdrop {
     transform: none;
   }
 }
+
+/* Bind the favorite seal to the moving object, not its stationary shelf slot. */
+.object > .favorite-mark {
+  z-index: 3;
+  color: #a33148;
+  background: #fff8ed;
+  border-radius: 50%;
+  width: 23px;
+  height: 23px;
+  line-height: 23px;
+  text-align: center;
+  text-shadow: none;
+  box-shadow: 0 2px 5px #0004;
+  pointer-events: none;
+}
+#favorite[aria-pressed='true'] {
+  color: #a33148;
+  background: #fce9eb;
+  border-color: #bd6778;
+}
+#favorite[aria-pressed='true'] svg {
+  fill: #a33148;
+}
+#favorite svg {
+  transition:
+    fill 180ms,
+    color 180ms;
+}
+.favorite-pop svg {
+  animation: favorite-pop 420ms ease-out;
+}
+@keyframes favorite-pop {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.4) rotate(-8deg);
+  }
+  65% {
+    transform: scale(0.92);
+  }
+}
+.favorite-feedback {
+  min-height: 1.3em;
+  font-size: 12px;
+  color: #a33148;
+}
+.spine-medallion {
+  position: absolute;
+  top: 10px;
+  left: 7px;
+  right: 7px;
+  height: 28px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #efce8e9c;
+  border-radius: 3px;
+  color: #f9e7bc;
+  background: #0002;
+}
+.spine-medallion img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.spine-medallion svg {
+  width: 18px;
+  height: 18px;
+}
+.shelf-items.spines .spine-title {
+  position: absolute;
+  top: 47px;
+  bottom: 37px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-height: none;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.15;
+  border: 0;
+}
+.spine-author {
+  position: absolute;
+  bottom: 10px;
+  left: 4px;
+  right: 4px;
+  font-size: 7px;
+  line-height: 1.15;
+  max-height: 18px;
+  overflow: hidden;
+  text-align: center;
+  color: #fff2d4;
+  border-top: 2px double #dfc08c8c;
+  padding-top: 4px;
+}
+.shelf-items.spines .film-case {
+  border-top-color: #292624;
+}
+.shelf-items.spines .spine > .favorite-mark {
+  width: 17px;
+  height: 17px;
+  line-height: 17px;
+  font-size: 12px;
+  top: 4px;
+  left: 3px;
+}
+#jellyfin-signin {
+  margin: 16px 0;
+  border: 1px solid #d9dece;
+  border-radius: 6px;
+}
+#jellyfin-signin[hidden] {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .favorite-pop svg {
+    animation: none;
+  }
+  #favorite svg {
+    transition: none;
+  }
+}
+
+/* Two vertical lines leave room for a real title instead of a few clipped words. */
+.shelf-items.spines .spine-title {
+  width: 27px;
+  white-space: normal;
+  text-overflow: clip;
+  font-size: 12px;
+  line-height: 13px;
+  text-align: center;
+}
+.room-directory {
+  flex-wrap: wrap;
+}
+.room-directory button {
+  flex: 1 1 135px;
+}

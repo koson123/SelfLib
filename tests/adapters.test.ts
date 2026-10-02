@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createAdapter } from '../src/server/adapters.js';
 import { addressAllowed, validateBase, sourceTransport } from '../src/server/security.js';
 import type { SourceConfig, SourceType } from '../src/shared.js';
-import { fixtureServer, secret } from './fixtures.js';
+import { fixtureServer, secret, fixtures } from './fixtures.js';
 test('all documented adapters normalize paginated contracts, artwork, progress and handoff', async () => {
   const server = await fixtureServer();
   try {
@@ -37,6 +37,8 @@ test('all documented adapters normalize paginated contracts, artwork, progress a
       assert.equal(item.actions.embeddedPlayback, 'unsupported');
       if (type === 'jellyfin') assert.equal(page.items[1].actions.progress, 'unsupported');
     }
+    assert.ok(server.requests.some((r) => r.url === '/api/v2/users/me'));
+    assert.ok(!server.requests.some((r) => r.url === '/api/v1/users/me'));
     assert.ok(
       server.requests.some((r) => r.method === 'POST' && r.url.startsWith('/api/v1/books/list')),
     );
@@ -146,6 +148,32 @@ test('adapter pagination advances actual library/page and offset cursors', async
     assert.equal((await jelly.page()).nextCursor, '1');
     assert.equal((await jelly.page('1')).nextCursor, undefined);
     assert.ok(calls.some((c) => c.includes('StartIndex=1')));
+  } finally {
+    await server.close();
+  }
+});
+
+test('Komga manga labels come from explicit book tags without guessing titles or changing source identity', async () => {
+  const server = await fixtureServer();
+  try {
+    const book = fixtures.komgaPage.content[0];
+    server.setResponse('/api/v1/books/list', {
+      content: [{ ...book, metadata: { ...book.metadata, tags: [' Manga '] } }],
+      last: true,
+    });
+    const source: SourceConfig = {
+      id: 'komga',
+      type: 'komga',
+      name: 'Comics',
+      url: server.url,
+      publicUrl: server.url,
+      credential: secret,
+      allowPrivate: true,
+    };
+    const item = (await createAdapter(source, { allowLoopback: true }).page()).items[0];
+    assert.equal(item.kind, 'manga');
+    assert.equal(item.section, 'comics');
+    assert.equal(item.sourceItemId, book.id);
   } finally {
     await server.close();
   }

@@ -45,6 +45,7 @@ const absItem = z.object({
       title: z.string(),
       authorName: z.string().optional(),
       authors: z.array(z.object({ name: z.string() })).optional(),
+      tags: z.array(z.string()).optional(),
       series: z.array(z.object({ name: z.string() })).optional(),
       description: z.string().nullish(),
       seriesName: z.string().nullish(),
@@ -65,6 +66,7 @@ const komgaItem = z.object({
     title: z.string(),
     summary: z.string().optional(),
     authors: z.array(z.object({ name: z.string() })).optional(),
+    tags: z.array(z.string()).optional(),
   }),
   readProgress: z
     .object({ page: z.number(), completed: z.boolean(), lastModified: z.string().optional() })
@@ -189,7 +191,7 @@ export function createAdapter(
         const me = z
           .object({ email: z.string().optional() })
           .passthrough()
-          .parse(await transport.json('/api/v1/users/me'));
+          .parse(await transport.json('/api/v2/users/me'));
         return { account: me.email };
       },
       async page(cursor = '0') {
@@ -207,7 +209,9 @@ export function createAdapter(
             sourceId: source.id,
             sourceItemId: item.id,
             section: 'comics',
-            kind: 'comic',
+            kind: item.metadata.tags?.some((tag) => tag.trim().toLowerCase() === 'manga')
+              ? 'manga'
+              : 'comic',
             title: text(item.metadata.title || item.name, 500),
             creator: text(item.metadata.authors?.map((a) => a.name).join(', '), 500),
             description: text(item.metadata.summary),
@@ -237,9 +241,15 @@ export function createAdapter(
     capabilities: supported,
     artwork,
     async health() {
-      const me = z
-        .object({ Id: idSchema, Name: z.string().optional() })
-        .parse(await transport.json('/Users/Me'));
+      const me = z.object({ Id: idSchema, Name: z.string().optional() }).parse(
+        await transport.json('/Users/Me').catch((error: unknown) => {
+          if (error instanceof Error && error.message.startsWith('Source returned HTTP 400.'))
+            throw new Error(
+              'Source returned HTTP 400 when identifying the Jellyfin viewer. Use a viewer account access token, not a Dashboard API key. Sign in with your Jellyfin account in the connection form, or check the server URL.',
+            );
+          throw error;
+        }),
+      );
       userId = me.Id;
       return { account: me.Name };
     },

@@ -85,6 +85,24 @@ export async function fixtureServer() {
       return;
     }
     const url = new URL(req.url || '', 'http://fixture');
+    if (url.pathname === '/Users/AuthenticateByName') {
+      let body = '';
+      for await (const chunk of req) body += chunk.toString();
+      const credentials = JSON.parse(body);
+      const valid =
+        req.method === 'POST' &&
+        req.headers.authorization?.startsWith('MediaBrowser Client="SelfLib"') &&
+        credentials.Username === 'fixture-viewer' &&
+        credentials.Pw === 'fixture-viewer-password';
+      res.writeHead(valid ? 200 : 401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(valid ? { AccessToken: secret, User: fixtures.jellyMe } : {}));
+      return;
+    }
+    if (url.pathname === '/Users/Me' && req.headers['x-emby-token'] === 'fixture-server-wide-key') {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end('{}');
+      return;
+    }
     if (url.pathname === '/redirect') {
       res.writeHead(302, { Location: 'http://169.254.169.254/' });
       res.end();
@@ -108,7 +126,7 @@ export async function fixtureServer() {
       '/api/me': fixtures.absMe,
       '/api/libraries': fixtures.absLibraries,
       '/api/libraries/lib-1/items': fixtures.absPage,
-      '/api/v1/users/me': fixtures.komgaMe,
+      '/api/v2/users/me': fixtures.komgaMe,
       '/api/v1/books/list': fixtures.komgaPage,
       '/Users/Me': fixtures.jellyMe,
       '/Items': fixtures.jellyPage,
@@ -119,7 +137,7 @@ export async function fixtureServer() {
       res.end('{}');
       return;
     }
-    const expected = url.pathname.startsWith('/api/v1')
+    const expected = url.pathname.startsWith('/api/v')
       ? req.headers['x-api-key']
       : url.pathname.startsWith('/api/')
         ? req.headers.authorization?.replace('Bearer ', '')

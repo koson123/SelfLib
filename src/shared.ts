@@ -11,7 +11,7 @@ export interface CatalogItem {
   sourceId: string;
   sourceItemId: string;
   section: Section;
-  kind: 'book' | 'audiobook' | 'comic' | 'movie' | 'show' | 'episode';
+  kind: 'book' | 'audiobook' | 'comic' | 'manga' | 'movie' | 'show' | 'episode';
   title: string;
   creator: string;
   description: string;
@@ -52,4 +52,26 @@ export interface ItemView extends Omit<CatalogItem, 'artworkPath'> {
   artwork: boolean;
   demo: boolean;
   sourceName: string;
+}
+
+/** Presentation rooms are separate from the stable source section identity. */
+export const shelfCategories = [
+  'books',
+  'audiobooks',
+  'comics',
+  'manga',
+  'movies',
+  'shows',
+] as const;
+export type ShelfCategory = (typeof shelfCategories)[number];
+export const categoryKinds: Record<ShelfCategory, CatalogItem['kind'][]> = {
+  books: ['book'],
+  audiobooks: ['audiobook'],
+  comics: ['comic'],
+  manga: ['manga'],
+  movies: ['movie'],
+  shows: ['show', 'episode'],
+};
+export function shelfCategory(item: Pick<CatalogItem, 'kind'>): ShelfCategory {
+  return shelfCategories.find((category) => categoryKinds[category].includes(item.kind))!;
 }

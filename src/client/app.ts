@@ -1,4 +1,4 @@
-import type { ItemView, Section } from '../shared.js';
+import { shelfCategories, shelfCategory, type ItemView } from '../shared.js';
 type Status = {
   setupRequired: boolean;
   authenticated: boolean;
@@ -42,6 +42,10 @@ const escape = (s: unknown) =>
   );
 const icon = (name: string) => {
   const paths: Record<string, string> = {
+    headphones:
+      '<path d="M4 14v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="12" width="4" height="9" rx="2"/><rect x="17" y="12" width="4" height="9" rx="2"/>',
+    shows: '<rect x="3" y="6" width="18" height="15" rx="2"/><path d="m8 2 4 4 4-4M7 17h10"/>',
+    audiobooks: '<path d="M4 14v-3a8 8 0 0 1 16 0v3M4 14v6h3v-6zm13 0v6h3v-6z"/>',
     book: '<path d="M3 4h6l3 3 3-3h6v15h-6l-3 2-3-2H3z"/><path d="M12 7v14"/>',
     search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/>',
     heart: '<path d="M12 21 3 12a5 5 0 0 1 9-7 5 5 0 0 1 9 7z"/>',
@@ -55,13 +59,16 @@ const icon = (name: string) => {
     logout: '<path d="M10 3H3v18h7M9 12h12m-5-5 5 5-5 5"/>',
     spark: '<path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/>',
   };
-  return `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">${paths[name] || paths.book}</svg>`;
+  return `<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">${paths[name === 'manga' ? 'comics' : name] || paths.book}</svg>`;
 };
 const labels: Record<string, string> = {
   home: 'The entrance',
-  books: 'Books & audiobooks',
-  comics: 'Comics & manga',
-  movies: 'Movies & television',
+  books: 'Books',
+  audiobooks: 'Audiobooks',
+  shows: 'TV shows',
+  comics: 'Comics',
+  manga: 'Manga',
+  movies: 'Movies',
   favorites: 'Your favorites',
   collections: 'Personal collections',
   settings: 'Library connections',
@@ -106,10 +113,26 @@ function tone(item: ItemView) {
   return [...item.title].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0) % 8;
 }
 function cover(item: ItemView, spine = false) {
-  return `<div class="object ${spine ? 'spine' : ''} ${item.section === 'movies' ? 'film-case' : item.section === 'comics' ? 'comic-volume' : 'bound-book'} tone-${tone(item)}">${item.artwork && !spine ? `<img src="/api/items/${encodeURIComponent(item.id)}/artwork" alt="" loading="lazy" decoding="async">` : `<div class="cover-art" aria-hidden="true"><span class="cover-edition">${escape(item.kind)}</span><span class="cover-title">${escape(item.title)}</span><span class="cover-symbol">${icon(item.section === 'movies' ? 'movies' : item.section === 'comics' ? 'comics' : 'spark')}</span><span class="cover-author">${escape(item.creator || 'Your collection')}</span></div>`}${spine ? `<span class="spine-title">${escape(item.title)}</span>` : ''}${item.progress ? `<span class="ribbon" title="${Math.round(item.progress.fraction * 100)}% complete"></span>` : ''}</div>`;
+  const symbol = icon(
+    item.kind === 'audiobook'
+      ? 'headphones'
+      : item.section === 'movies'
+        ? 'movies'
+        : item.section === 'comics'
+          ? 'comics'
+          : 'spark',
+  );
+  const artwork = item.artwork
+    ? `<img src="/api/items/${encodeURIComponent(item.id)}/artwork" alt="" loading="lazy" decoding="async">`
+    : '';
+  const binding = spine
+    ? `<span class="spine-medallion" aria-hidden="true">${artwork || symbol}</span><span class="spine-title">${escape(item.title)}</span><span class="spine-author" aria-hidden="true">${escape(item.creator || item.kind)}</span>`
+    : artwork ||
+      `<div class="cover-art" aria-hidden="true"><span class="cover-edition">${escape(item.kind)}</span><span class="cover-title">${escape(item.title)}</span><span class="cover-symbol">${symbol}</span><span class="cover-author">${escape(item.creator || 'Your collection')}</span></div>`;
+  return `<div class="object ${spine ? 'spine' : ''} ${item.section === 'movies' ? 'film-case' : item.section === 'comics' ? 'comic-volume' : 'bound-book'} tone-${tone(item)}">${binding}${item.progress ? `<span class="ribbon" title="${Math.round(item.progress.fraction * 100)}% complete"></span>` : ''}${item.favorite ? `<span class="favorite-mark" aria-label="Favorite">♥</span>` : ''}</div>`;
 }
 function itemCard(item: ItemView, compact = false) {
-  return `<article class="item ${compact ? 'compact' : ''}"><button class="item-open" data-item="${escape(item.id)}" aria-label="View ${escape(item.title)}">${cover(item, view === 'spines' && !compact)}<span class="item-caption"><strong>${escape(item.title)}</strong><small>${escape(item.creator || item.kind)}</small></span></button>${item.progress && compact ? `<progress max="1" value="${item.progress.fraction}" aria-label="${escape(item.title)} progress"></progress><span class="progress-caption">${Math.round(item.progress.fraction * 100)}% · ${item.kind === 'audiobook' ? 'listening' : item.section === 'movies' ? 'watching' : 'reading'}</span>` : ''}${item.favorite ? `<span class="favorite-mark" aria-label="Favorite">♥</span>` : ''}</article>`;
+  return `<article class="item ${compact ? 'compact' : ''}"><button class="item-open" data-item="${escape(item.id)}" aria-label="View ${escape(item.title)}" title="${escape(item.title)}${item.creator ? ' · ' + escape(item.creator) : ''}">${cover(item, view === 'spines' && !compact)}<span class="item-caption"><strong>${escape(item.title)}</strong><small>${escape(item.creator || item.kind)}</small></span></button>${item.progress && compact ? `<progress max="1" value="${item.progress.fraction}" aria-label="${escape(item.title)} progress"></progress><span class="progress-caption">${Math.round(item.progress.fraction * 100)}% · ${item.kind === 'audiobook' ? 'listening' : item.section === 'movies' ? 'watching' : 'reading'}</span>` : ''}</article>`;
 }
 function bindItems(root: ParentNode = app) {
   root.querySelectorAll<HTMLButtonElement>('[data-item]').forEach((button) =>
@@ -120,7 +143,7 @@ function bindItems(root: ParentNode = app) {
   );
 }
 function shell() {
-  app.innerHTML = `<a class="skip-link" href="#main">Skip to library</a><aside class="sidebar"><a class="brand" href="#" data-page="home">${icon('book')}<span>SelfLib<small>A PLACE FOR YOUR STORIES</small></span></a><p class="nav-label">YOUR LIBRARY</p><nav aria-label="Library sections">${['home', 'books', 'comics', 'movies', 'favorites', 'collections'].map((p) => `<button data-page="${p}" class="nav-link ${page === p ? 'active' : ''}" ${page === p ? 'aria-current="page"' : ''}>${icon(p === 'books' ? 'book' : p === 'favorites' ? 'heart' : p === 'collections' ? 'collection' : p)}${escape(p === 'home' ? 'Entrance' : p === 'movies' ? 'Movies & TV' : p === 'collections' ? 'Collections' : labels[p])}</button>`).join('')}</nav><div class="sidebar-bottom"><div class="library-note">${icon('spark')}<p>Your collections.<br>Your own little world.</p></div><button data-page="settings" class="nav-link ${page === 'settings' ? 'active' : ''}">${icon('settings')}Connections</button>${status.authenticated && !demo ? '<button id="enter-demo" class="nav-link">Explore demo library</button>' : ''}${status.authenticated ? `<button id="logout" class="nav-link">${icon('logout')}Sign out · ${escape(status.username)}</button>` : `<button id="leave-demo" class="nav-link">${icon('logout')}Set up your library</button>`}</div></aside><div class="workspace"><header class="topbar"><span class="breadcrumb">YOUR LIBRARY <span>/</span> ${escape(labels[page])}</span><form id="search" role="search">${icon('search')}<input type="search" name="q" aria-label="Search across your library" placeholder="Find a story, author, or series…" value="${escape(q)}" maxlength="200"><button type="submit" class="search-submit">Search</button></form><span class="owner-avatar" aria-label="${demo ? 'Demo library' : 'Owner account'}">${demo ? 'D' : escape(status.username?.slice(0, 1).toUpperCase() || 'S')}</span></header>${demo ? '<div class="demo-banner"><strong>DEMO LIBRARY</strong> Fictional titles and illustrative progress. No media or source credentials. <button id="demo-switch">' + (status.authenticated ? 'Return to my library' : 'Create my library') + '</button></div>' : ''}<main id="main" tabindex="-1"></main><footer>SelfLib <span>0.1.0 · A library of your own</span></footer></div>`;
+  app.innerHTML = `<a class="skip-link" href="#main">Skip to library</a><aside class="sidebar"><a class="brand" href="#" data-page="home">${icon('book')}<span>SelfLib<small>A PLACE FOR YOUR STORIES</small></span></a><p class="nav-label">YOUR LIBRARY</p><nav aria-label="Library sections">${['home', ...shelfCategories, 'favorites', 'collections'].map((p) => `<button data-page="${p}" class="nav-link ${page === p ? 'active' : ''}" ${page === p ? 'aria-current="page"' : ''}>${icon(p === 'books' ? 'book' : p === 'favorites' ? 'heart' : p === 'collections' ? 'collection' : p)}${escape(p === 'home' ? 'Entrance' : p === 'collections' ? 'Collections' : labels[p])}</button>`).join('')}</nav><div class="sidebar-bottom"><div class="library-note">${icon('spark')}<p>Your collections.<br>Your own little world.</p></div><button data-page="settings" class="nav-link ${page === 'settings' ? 'active' : ''}">${icon('settings')}Connections</button>${status.authenticated && !demo ? '<button id="enter-demo" class="nav-link">Explore demo library</button>' : ''}${status.authenticated ? `<button id="logout" class="nav-link">${icon('logout')}Sign out · ${escape(status.username)}</button>` : `<button id="leave-demo" class="nav-link">${icon('logout')}Set up your library</button>`}</div></aside><div class="workspace"><header class="topbar"><span class="breadcrumb">YOUR LIBRARY <span>/</span> ${escape(labels[page])}</span><form id="search" role="search">${icon('search')}<input type="search" name="q" aria-label="Search across your library" placeholder="Find a story, author, or series…" value="${escape(q)}" maxlength="200"><button type="submit" class="search-submit">Search</button></form><span class="owner-avatar" aria-label="${demo ? 'Demo library' : 'Owner account'}">${demo ? 'D' : escape(status.username?.slice(0, 1).toUpperCase() || 'S')}</span></header>${demo ? '<div class="demo-banner"><strong>DEMO LIBRARY</strong> Fictional titles and illustrative progress. No media or source credentials. <button id="demo-switch">' + (status.authenticated ? 'Return to my library' : 'Create my library') + '</button></div>' : ''}<main id="main" tabindex="-1"></main><footer>SelfLib <span>0.1.0 · A library of your own</span></footer></div>`;
   app.querySelectorAll<HTMLElement>('[data-page]').forEach((button) =>
     button.addEventListener('click', (event) => {
       event.preventDefault();
@@ -161,8 +184,8 @@ async function loadItems(extra = '') {
   if (!status.authenticated) {
     const result = await api<{ items: ItemView[] }>('/demo');
     let selected = result.items;
-    if (page === 'books' || page === 'comics' || page === 'movies')
-      selected = selected.filter((i) => i.section === page);
+    if (shelfCategories.some((category) => category === page))
+      selected = selected.filter((i) => shelfCategory(i) === page);
     if (q)
       selected = selected.filter((i) =>
         (i.title + ' ' + i.creator + ' ' + i.description).toLowerCase().includes(q.toLowerCase()),
@@ -172,7 +195,7 @@ async function loadItems(extra = '') {
   }
   const params = new URLSearchParams({ demo: String(demo), limit: '60', offset: String(offset) });
   if (q) params.set('q', q);
-  if (['books', 'comics', 'movies'].includes(page)) params.set('section', page);
+  if (shelfCategories.some((category) => category === page)) params.set('category', page);
   if (page === 'favorites') params.set('favorite', 'true');
   if (page === 'collections' && selectedCollection) params.set('collection', selectedCollection);
   return api<{ items: ItemView[]; total: number }>('/items?' + params + extra);
@@ -200,9 +223,9 @@ async function render() {
     let result = await loadItems();
     if (page === 'home' && !q && status.authenticated) {
       const previews = await Promise.all(
-        ['books', 'comics', 'movies'].map((section) =>
+        shelfCategories.map((section) =>
           api<{ items: ItemView[]; total: number }>(
-            '/items?demo=' + demo + '&section=' + section + '&limit=6',
+            '/items?demo=' + demo + '&category=' + section + '&limit=6',
           ),
         ),
       );
@@ -228,7 +251,7 @@ async function render() {
         ? '<p class="outage-note">A collection source is unavailable. You can still browse its cached catalog. Check Connections for details.</p>'
         : '';
     const home = page === 'home' && !q;
-    main.innerHTML = `${home ? `<section class="hero"><div class="hero-copy"><p class="eyebrow">WELCOME TO YOUR PERSONAL LIBRARY</p><h1>A world of stories.<br><em>A place to call yours.</em></h1><p>Pick up where you left off, wander the shelves,<br class="desktop-break"> or find something you haven’t discovered yet.</p><button class="primary" id="browse-books">Explore the bookshelves ${icon('arrow')}</button></div><div class="hero-illustration" aria-hidden="true"><div class="illustration-window"></div><div class="little-book one">STORIES</div><div class="little-book two">ATLAS</div><div class="little-book three">NIGHTS</div><div class="illustration-shelf"></div><div class="plant"><span></span></div><div class="lamp"></div></div></section>` : `<div class="page-heading"><p class="eyebrow">${q ? 'THE CATALOG' : 'YOUR PERSONAL LIBRARY'}</p><h1>${title}</h1><p>${total} ${total === 1 ? 'item' : 'items'} to discover${demo ? ' · fictional demonstration' : ''}.</p></div>`}${sourceWarning}${home && continueItems.length ? `<section class="continue-section"><div class="section-heading"><div><p class="eyebrow">THE READING TABLE</p><h2>Right where you left off</h2></div><span class="quiet">${demo ? 'Illustrative progress' : 'Progress from your sources'}</span></div><div class="continue-grid">${continueItems.map((i) => itemCard(i, true)).join('')}</div></section>` : ''}${page === 'collections' ? collectionToolbar() : ''}<section class="browse-section"><div class="section-heading"><div>${home ? '<p class="eyebrow">WANDER A LITTLE</p><h2>Your shelves</h2>' : '<h2>On the shelves</h2>'}</div><div class="view-switch" role="group" aria-label="Shelf presentation"><button id="covers" class="${view === 'covers' ? 'selected' : ''}" aria-pressed="${view === 'covers'}">Covers</button><button id="spines" class="${view === 'spines' ? 'selected' : ''}" aria-pressed="${view === 'spines'}">Spines</button></div></div>${home ? `<div class="room-directory">${(['books', 'comics', 'movies'] as Section[]).map((s) => `<button data-room="${s}">${icon(s === 'books' ? 'book' : s)}<span>${labels[s]}</span>${icon('arrow')}</button>`).join('')}</div>` : ''}${renderShelves(result.items)}${total > 60 && !home ? `<div class="pagination"><button id="previous" ${offset === 0 ? 'disabled' : ''}>Previous</button><span>${offset + 1}–${Math.min(offset + 60, total)} of ${total}</span><button id="next" ${offset + 60 >= total ? 'disabled' : ''}>Next</button></div>` : ''}</section>${home ? `<section class="future"><p class="eyebrow">ROOM TO GROW</p><p>Music · Photos · Games · Reference</p><span>Future sections — integrations are not available in this release.</span></section>` : ''}`;
+    main.innerHTML = `${home ? `<section class="hero"><div class="hero-copy"><p class="eyebrow">WELCOME TO YOUR PERSONAL LIBRARY</p><h1>A world of stories.<br><em>A place to call yours.</em></h1><p>Pick up where you left off, wander the shelves,<br class="desktop-break"> or find something you haven’t discovered yet.</p><button class="primary" id="browse-books">Explore the bookshelves ${icon('arrow')}</button></div><div class="hero-illustration" aria-hidden="true"><div class="illustration-window"></div><div class="little-book one">STORIES</div><div class="little-book two">ATLAS</div><div class="little-book three">NIGHTS</div><div class="illustration-shelf"></div><div class="plant"><span></span></div><div class="lamp"></div></div></section>` : `<div class="page-heading"><p class="eyebrow">${q ? 'THE CATALOG' : 'YOUR PERSONAL LIBRARY'}</p><h1>${title}</h1><p>${total} ${total === 1 ? 'item' : 'items'} to discover${demo ? ' · fictional demonstration' : ''}.</p></div>`}${sourceWarning}${home && continueItems.length ? `<section class="continue-section"><div class="section-heading"><div><p class="eyebrow">THE READING TABLE</p><h2>Right where you left off</h2></div><span class="quiet">${demo ? 'Illustrative progress' : 'Progress from your sources'}</span></div><div class="continue-grid">${continueItems.map((i) => itemCard(i, true)).join('')}</div></section>` : ''}${page === 'collections' ? collectionToolbar() : ''}<section class="browse-section"><div class="section-heading"><div>${home ? '<p class="eyebrow">WANDER A LITTLE</p><h2>Your shelves</h2>' : '<h2>On the shelves</h2>'}</div><div class="view-switch" role="group" aria-label="Shelf presentation"><button id="covers" class="${view === 'covers' ? 'selected' : ''}" aria-pressed="${view === 'covers'}">Covers</button><button id="spines" class="${view === 'spines' ? 'selected' : ''}" aria-pressed="${view === 'spines'}">Spines</button></div></div>${home ? `<div class="room-directory">${shelfCategories.map((s) => `<button data-room="${s}">${icon(s === 'books' ? 'book' : s)}<span>${labels[s]}</span>${icon('arrow')}</button>`).join('')}</div>` : ''}${renderShelves(result.items)}${total > 60 && !home ? `<div class="pagination"><button id="previous" ${offset === 0 ? 'disabled' : ''}>Previous</button><span>${offset + 1}–${Math.min(offset + 60, total)} of ${total}</span><button id="next" ${offset + 60 >= total ? 'disabled' : ''}>Next</button></div>` : ''}</section>${home ? `<section class="future"><p class="eyebrow">ROOM TO GROW</p><p>Music · Photos · Games · Reference</p><span>Future sections — integrations are not available in this release.</span></section>` : ''}`;
     main.querySelector('#browse-books')?.addEventListener('click', () => navigate('books'));
     main
       .querySelectorAll<HTMLButtonElement>('[data-room]')
@@ -264,7 +287,7 @@ function renderShelves(list: ItemView[]) {
   if (!list.length)
     return `<div class="empty">${icon('book')}<h2>${q ? 'No matching stories yet' : page === 'favorites' ? 'Save a little inspiration' : page === 'collections' ? 'Make room for a collection' : 'The shelves are ready for you'}</h2><p>${q ? 'Try a shorter title, author, or series.' : page === 'favorites' ? 'Open an item and add it to your favorites.' : page === 'collections' ? 'Create a collection, then add items from their detail panels.' : 'Add any one connection and synchronize its catalog, or explore the demo library.'}</p>${!demo && page !== 'favorites' && page !== 'collections' ? '<button id="empty-connect" class="primary">Connect a collection</button><button id="empty-demo">Explore demo</button>' : ''}</div>`;
   const groups: Record<string, ItemView[]> = {};
-  for (const item of list) (groups[item.section] ??= []).push(item);
+  for (const item of list) (groups[shelfCategory(item)] ??= []).push(item);
   return Object.entries(groups)
     .map(
       ([section, entries]) =>
@@ -329,7 +352,7 @@ function showCreateCollection() {
   });
 }
 async function showDetail(item: ItemView) {
-  dialog.innerHTML = `<button class="dialog-close" aria-label="Close">×</button><div class="detail-layout"><div class="detail-cover">${cover(item)}</div><div class="detail-copy"><p class="eyebrow">${escape(item.sourceName)} · ${escape(item.kind)}</p><h2 id="dialog-title">${escape(item.title)}</h2><p class="detail-author">${escape(item.creator)}</p>${item.series ? `<p>Series: ${escape(item.series)}</p>` : ''}<p class="description">${escape(item.description || 'No description is available from this source.')}</p>${item.progress ? `<div class="detail-progress"><progress max="1" value="${item.progress.fraction}" aria-label="Progress"></progress><p>${Math.round(item.progress.fraction * 100)}% complete${item.progress.unit === 'pages' ? ` · page ${item.progress.position}` : item.progress.unit === 'seconds' ? ` · ${Math.floor((item.progress.position || 0) / 60)} minutes in` : ''}<small>${item.demo ? 'Illustrative demo progress' : 'Source progress as of the last synchronization. The source reader/player resumes playback.'}</small></p></div>` : '<p class="quiet">No in-progress position reported by the source.</p>'}<div class="detail-actions"><button id="open-source" class="primary" ${item.actions.open === 'unsupported' ? 'disabled' : ''}>${item.kind === 'audiobook' ? 'Listen' : item.section === 'movies' ? 'Watch' : 'Read'} in source ${icon('arrow')}</button><button id="favorite" aria-pressed="${item.favorite}">${icon('heart')}${item.favorite ? 'Saved' : 'Favorite'}</button></div><p class="quiet">${item.demo ? 'Demo titles are fictional and cannot be read or played.' : 'Opens your configured source app. You may need to sign in there.'}</p><div id="detail-collections"></div></div></div>`;
+  dialog.innerHTML = `<button class="dialog-close" aria-label="Close">×</button><div class="detail-layout"><div class="detail-cover">${cover(item)}</div><div class="detail-copy"><p class="eyebrow">${escape(item.sourceName)} · ${escape(item.kind)}</p><h2 id="dialog-title">${escape(item.title)}</h2><p class="detail-author">${escape(item.creator)}</p>${item.series ? `<p>Series: ${escape(item.series)}</p>` : ''}<p class="description">${escape(item.description || 'No description is available from this source.')}</p>${item.progress ? `<div class="detail-progress"><progress max="1" value="${item.progress.fraction}" aria-label="Progress"></progress><p>${Math.round(item.progress.fraction * 100)}% complete${item.progress.unit === 'pages' ? ` · page ${item.progress.position}` : item.progress.unit === 'seconds' ? ` · ${Math.floor((item.progress.position || 0) / 60)} minutes in` : ''}<small>${item.demo ? 'Illustrative demo progress' : 'Source progress as of the last synchronization. The source reader/player resumes playback.'}</small></p></div>` : '<p class="quiet">No in-progress position reported by the source.</p>'}<div class="detail-actions"><button id="open-source" class="primary" ${item.actions.open === 'unsupported' ? 'disabled' : ''}>${item.kind === 'audiobook' ? 'Listen' : item.section === 'movies' ? 'Watch' : 'Read'} in source ${icon('arrow')}</button><button id="favorite" aria-pressed="${item.favorite}">${icon('heart')}${item.favorite ? 'Saved' : 'Favorite'}</button></div><p class="quiet">${item.demo ? 'Demo titles are fictional and cannot be read or played.' : 'Opens your configured source app. You may need to sign in there.'}</p><p id="favorite-feedback" class="favorite-feedback" role="status" aria-live="polite"></p><div id="detail-collections"></div></div></div>`;
   openDialog();
   dialog.querySelector<HTMLButtonElement>('#open-source')!.addEventListener('click', (event) =>
     busy(event.currentTarget as HTMLButtonElement, async () => {
@@ -351,6 +374,13 @@ async function showDetail(item: ItemView) {
       const b = dialog.querySelector<HTMLButtonElement>('#favorite')!;
       b.innerHTML = icon('heart') + (item.favorite ? 'Saved' : 'Favorite');
       b.setAttribute('aria-pressed', String(item.favorite));
+      b.classList.remove('favorite-pop');
+      void b.offsetWidth;
+      b.classList.add('favorite-pop');
+      dialog.querySelector('.detail-cover')!.innerHTML = cover(item);
+      dialog.querySelector('#favorite-feedback')!.textContent = item.favorite
+        ? 'Added to your favorites.'
+        : 'Removed from your favorites.';
       await render();
     });
   });
@@ -401,10 +431,10 @@ const help: Record<string, string> = {
   komga:
     'Create an API key in Komga Account → API keys. Use a normal reader account with only the desired libraries; administration permissions are unnecessary. Versions without API keys are not supported.',
   jellyfin:
-    'Use a user access token obtained from POST /Users/AuthenticateByName for the intended viewer account. Do not use a server-wide admin API key. See docs/integrations.md for the exact curl example and required client header. This account determines visible libraries and progress.',
+    'Sign in below with a normal Jellyfin viewer account, or paste its user access token. Dashboard API keys do not identify a viewer and cannot supply personal progress. SelfLib exchanges your password on the server, stores only the encrypted token, and never returns it to the browser.',
 };
 function renderSettings(main: HTMLElement) {
-  main.innerHTML = `<div class="page-heading"><p class="eyebrow">BRING YOUR COLLECTIONS TOGETHER</p><h1>Library connections</h1><p>Keep your media where it belongs. SelfLib brings its shelves here.</p></div>${!status.authenticated ? '<div class="empty"><h2>Connect your own collections</h2><p>First create the owner account. Exploring the demo never requires credentials.</p><button id="setup-from-settings" class="primary">Create my library</button></div>' : `<p class="privacy-note">Single-owner release. Every connected account’s visible catalog is available to this owner. Choose a reader/viewer account with the intended library permissions.</p><div class="connection-list">${sources.map((s) => `<article class="connection"><div class="connection-heading">${icon(s.type === 'jellyfin' ? 'movies' : s.type === 'komga' ? 'comics' : 'book')}<div><h2>${escape(s.name)}</h2><p>${escape(s.type)}</p></div><span class="health ${s.health === 'ready' || s.health === 'reachable' ? 'ready' : ''}">${escape(s.syncing ? 'syncing' : s.health)}</span></div><p class="connection-url">${escape(s.url)}</p><dl><div><dt>Last successful sync</dt><dd>${escape(date(s.last_sync))}</dd></div><div><dt>Last attempt</dt><dd>${escape(date(s.last_attempt))}</dd></div></dl>${s.error ? `<p class="connection-error">${escape(s.error)}</p>` : ''}<div class="connection-actions"><button data-sync="${s.id}" class="primary" ${s.syncing ? 'disabled' : ''}>${s.syncing ? 'Synchronizing…' : 'Synchronize'}</button><button data-test="${s.id}">Test connection</button><button data-edit="${s.id}">Edit</button><button data-remove="${s.id}" class="danger">Remove</button></div></article>`).join('') || '<p class="quiet">No connections yet. Add any one source below to begin.</p>'}</div><section class="connection-form-card"><p class="eyebrow">ONE SOURCE IS ENOUGH TO START</p><h2 id="connection-form-title">Add a connection</h2><form id="connection-form"><input type="hidden" name="id" value=""><div class="form-grid"><label>Service<select name="type" aria-label="Service"><option value="audiobookshelf">Audiobookshelf</option><option value="komga">Komga</option><option value="jellyfin">Jellyfin</option></select></label><label>Display name<input name="name" required maxlength="80" placeholder="My books"></label><label>Server URL<input name="url" aria-label="Server URL" type="url" required placeholder="https://books.example.org" maxlength="2048"><small>Address reachable by the SelfLib container, including the service base path if needed.</small></label><label>Browser URL <span class="quiet">optional</span><input name="publicUrl" aria-label="Browser URL" type="url" placeholder="Same as server URL" maxlength="2048"><small>Address reachable by your browser. Used only for handoff links.</small></label></div><label>API key / user access token<input name="credential" aria-label="API key / user access token" type="password" required autocomplete="new-password" maxlength="4096"><small>Stored encrypted on the server. Never returned to your browser.</small></label><p id="auth-help" class="auth-help">${help.audiobookshelf}</p><label class="check"><input name="allowPrivate" type="checkbox">Allow this configured source to use private LAN addresses</label><p class="quiet">Local addresses are intentional and require this approval. Redirects, link-local/metadata addresses, and arbitrary proxy destinations are blocked.</p><div class="form-actions"><button id="test-new" type="button">Test connection</button><button type="submit" class="primary">Save connection</button><button id="cancel-edit" type="button" hidden>Cancel edit</button></div><p id="connection-result" role="status" aria-live="polite"></p></form></section><section class="future"><h2>Coming later</h2><p>Navidrome · Immich · Paperless-ngx · Playnite · RomM</p><span>These integrations are planned and cannot be configured yet.</span></section>`}`;
+  main.innerHTML = `<div class="page-heading"><p class="eyebrow">BRING YOUR COLLECTIONS TOGETHER</p><h1>Library connections</h1><p>Keep your media where it belongs. SelfLib brings its shelves here.</p></div>${!status.authenticated ? '<div class="empty"><h2>Connect your own collections</h2><p>First create the owner account. Exploring the demo never requires credentials.</p><button id="setup-from-settings" class="primary">Create my library</button></div>' : `<p class="privacy-note">Single-owner release. Every connected account’s visible catalog is available to this owner. Choose a reader/viewer account with the intended library permissions.</p><div class="connection-list">${sources.map((s) => `<article class="connection"><div class="connection-heading">${icon(s.type === 'jellyfin' ? 'movies' : s.type === 'komga' ? 'comics' : 'book')}<div><h2>${escape(s.name)}</h2><p>${escape(s.type)}</p></div><span class="health ${s.health === 'ready' || s.health === 'reachable' ? 'ready' : ''}">${escape(s.syncing ? 'syncing' : s.health)}</span></div><p class="connection-url">${escape(s.url)}</p><dl><div><dt>Last successful sync</dt><dd>${escape(date(s.last_sync))}</dd></div><div><dt>Last attempt</dt><dd>${escape(date(s.last_attempt))}</dd></div></dl>${s.error ? `<p class="connection-error">${escape(s.error)}</p>` : ''}<div class="connection-actions"><button data-sync="${s.id}" class="primary" ${s.syncing ? 'disabled' : ''}>${s.syncing ? 'Synchronizing…' : 'Synchronize'}</button><button data-test="${s.id}">Test connection</button><button data-edit="${s.id}">Edit</button><button data-remove="${s.id}" class="danger">Remove</button></div></article>`).join('') || '<p class="quiet">No connections yet. Add any one source below to begin.</p>'}</div><section class="connection-form-card"><p class="eyebrow">ONE SOURCE IS ENOUGH TO START</p><h2 id="connection-form-title">Add a connection</h2><form id="connection-form"><input type="hidden" name="id" value=""><div class="form-grid"><label>Service<select name="type" aria-label="Service"><option value="audiobookshelf">Audiobookshelf</option><option value="komga">Komga</option><option value="jellyfin">Jellyfin</option></select></label><label>Display name<input name="name" required maxlength="80" placeholder="My books"></label><label>Server URL<input name="url" aria-label="Server URL" type="url" required placeholder="https://books.example.org" maxlength="2048"><small>Address reachable by the SelfLib container, including the service base path if needed.</small></label><label>Browser URL <span class="quiet">optional</span><input name="publicUrl" aria-label="Browser URL" type="url" placeholder="Same as server URL" maxlength="2048"><small>Address reachable by your browser. Used only for handoff links.</small></label></div><label>API key / user access token<input name="credential" aria-label="API key / user access token" type="password" required autocomplete="new-password" maxlength="4096"><small>Stored encrypted on the server. Never returned to your browser.</small></label><fieldset id="jellyfin-signin" hidden><legend>Or sign in with your Jellyfin viewer account</legend><label>Jellyfin username<input name="jellyfinUsername" autocomplete="off" maxlength="128"></label><label>Jellyfin password<input name="jellyfinPassword" type="password" autocomplete="new-password" maxlength="256"></label><small>Leave the token field blank to sign in. Password is sent to the configured service and is never stored. Test connection also creates a Jellyfin session; revoke unused sessions in Jellyfin.</small></fieldset><p id="auth-help" class="auth-help">${help.audiobookshelf}</p><label class="check"><input name="allowPrivate" type="checkbox">Allow this configured source to use private LAN addresses</label><p class="quiet">Local addresses are intentional and require this approval. Redirects, link-local/metadata addresses, and arbitrary proxy destinations are blocked.</p><div class="form-actions"><button id="test-new" type="button">Test connection</button><button type="submit" class="primary">Save connection</button><button id="cancel-edit" type="button" hidden>Cancel edit</button></div><p id="connection-result" role="status" aria-live="polite"></p></form></section><section class="future"><h2>Coming later</h2><p>Navidrome · Immich · Paperless-ngx · Playnite · RomM</p><span>These integrations are planned and cannot be configured yet.</span></section>`}`;
   main.querySelector('#setup-from-settings')?.addEventListener('click', () => {
     demo = false;
     renderAuth();
@@ -419,7 +449,17 @@ function renderSettings(main: HTMLElement) {
       credential: String(v.credential || ''),
       allowPrivate: v.allowPrivate === 'on',
       publicUrl: v.publicUrl || undefined,
+      jellyfinUsername:
+        v.type === 'jellyfin' && v.jellyfinUsername ? v.jellyfinUsername : undefined,
+      jellyfinPassword:
+        v.type === 'jellyfin' && v.jellyfinPassword ? v.jellyfinPassword : undefined,
     };
+  };
+  const updateAuth = () => {
+    const jellyfin = (form.elements.namedItem('type') as HTMLSelectElement).value === 'jellyfin';
+    form.querySelector<HTMLElement>('#jellyfin-signin')!.hidden = !jellyfin;
+    form.querySelector<HTMLInputElement>('[name=credential]')!.required =
+      !jellyfin && !(form.elements.namedItem('id') as HTMLInputElement).value;
   };
   const reset = () => {
     form.reset();
@@ -427,9 +467,11 @@ function renderSettings(main: HTMLElement) {
     form.querySelector<HTMLInputElement>('[name=credential]')!.required = true;
     main.querySelector('#connection-form-title')!.textContent = 'Add a connection';
     main.querySelector<HTMLButtonElement>('#cancel-edit')!.hidden = true;
+    updateAuth();
   };
   form.querySelector<HTMLSelectElement>('[name=type]')!.addEventListener('change', (event) => {
     form.querySelector('#auth-help')!.textContent = help[(event.target as HTMLSelectElement).value];
+    updateAuth();
   });
   form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -447,7 +489,9 @@ function renderSettings(main: HTMLElement) {
       result.textContent = 'Testing…';
       try {
         const r = await api<{ ok: boolean; account?: string }>(
-          v.id && !v.credential ? '/sources/' + v.id + '/test' : '/sources/test',
+          v.id && !v.credential && !v.jellyfinPassword
+            ? '/sources/' + v.id + '/test'
+            : '/sources/test',
           'POST',
           v,
         );
@@ -495,11 +539,14 @@ function renderSettings(main: HTMLElement) {
         url: s.url,
         publicUrl: s.public_url,
         credential: '',
+        jellyfinUsername: '',
+        jellyfinPassword: '',
       })) {
         (form.elements.namedItem(name) as HTMLInputElement).value = value;
       }
       (form.elements.namedItem('allowPrivate') as HTMLInputElement).checked = !!s.allow_private;
       form.querySelector<HTMLInputElement>('[name=credential]')!.required = false;
+      updateAuth();
       form.querySelector<HTMLInputElement>('[name=credential]')!.placeholder =
         'Leave blank to keep the stored credential';
       main.querySelector('#auth-help')!.textContent = help[s.type];
