@@ -5,6 +5,7 @@
 - Added single-owner onboarding, local sessions, CSRF checks and login throttling.
 - Added server-side encrypted service credentials and endpoint-constrained API transport.
 - Added Audiobookshelf, Komga and Jellyfin contract-tested adapters and bounded manual sync.
+- Added physical wooden bookcases, spine-first browsing, individual shelf rows, and varied book shapes.
 - Added responsive shelves, source handoff, progress snapshots, search, favorites and mixed collections.
 - Added clearly labeled fictional demo and protected catalog/artwork caching.
 - Added versioned SQLite initialization, offline maintenance, Docker packaging, checks and public docs.

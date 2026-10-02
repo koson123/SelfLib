@@ -25,7 +25,7 @@ The workspace has no Docker daemon, so **local Docker build/Compose smoke were n
 - **Container:** real `linux/amd64` Docker build, fresh production Compose volume, setup-token/owner authentication, protected catalog, favorite persistence after restart, logout and disposable cleanup.
 - **Application:** clean npm install, strict types/lint, all 11 Node tests, reproducible license notices, production build/native smoke, standard Playwright Chromium installation and all three responsive browser journeys. Fictional screenshots are retained as a CI artifact.
 
-This evidence verifies the declared AMD64 image dependencies and installation path; it does not imply ARM64 or live-source compatibility. No registry image has been published. The later documentation-only evidence commit does not change the verified application or container inputs.
+This evidence verifies the declared AMD64 image dependencies and installation path; it does not imply ARM64 or live-source compatibility. No registry image has been published. Results belong to the linked commit. The subsequent physical-bookcase UI revision was checked again with strict types, lint, production build and all three responsive browser journeys; updated screenshots were captured. Current PR checks cover subsequent commits.
 
 Only Linux AMD64 is the declared container target. Native Linux x64 Node/SQLite/FTS5 are tested. ARM64, native Windows server execution, real iPhone/iPad Safari, other browser engines, live reverse-proxy/certificate installation, and real upstream server versions are unverified. Phone/tablet Chromium viewport tests do not prove iOS compatibility.
 
@@ -44,8 +44,8 @@ Measured on the clean native production smoke install, with **16 fictional items
 | Node RSS after setup                   | About 67.5 MiB (70,782,976 bytes), sampled through `process.memoryUsage()` from the production child; not whole-container memory |
 | SQLite after graceful stop             | 114,688 bytes                                                                                                                    |
 | Runtime npm dependencies on disk       | About 15 MiB                                                                                                                     |
-| Compiled output including maps         | About 276 KiB                                                                                                                    |
-| Browser JavaScript / CSS, uncompressed | 26,860 / 30,545 bytes; no mandatory font download                                                                                |
+| Compiled output including maps         | About 280 KiB                                                                                                                    |
+| Browser JavaScript / CSS, uncompressed | 27,026 / 34,066 bytes; no mandatory font download                                                                                |
 
 These numbers are not large-library or homelab load tests. Reserve **256–768 MiB RAM** and roughly one available CPU core during sync/build as an initial estimate; Compose limits runtime to 768 MiB / one CPU. Password scrypt briefly uses additional memory/CPU. Metadata staging is bounded to 10,000 items per source; descriptions can make staging much larger than the demo. Synchronous transactions/password work can pause requests in this single-owner design.
 

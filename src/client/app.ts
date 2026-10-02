@@ -25,7 +25,7 @@ const dialog = document.querySelector<HTMLDialogElement>('#detail')!;
 let status: Status;
 let demo = false;
 let page = 'home';
-let view = localStorage.getItem('selflib-view') || 'covers';
+let view = localStorage.getItem('selflib-view') || 'spines';
 let q = '';
 let offset = 0;
 let total = 0;
@@ -268,7 +268,14 @@ function renderShelves(list: ItemView[]) {
   return Object.entries(groups)
     .map(
       ([section, entries]) =>
-        `<div class="shelf-group"><div class="shelf-label">${icon(section === 'books' ? 'book' : section)}<h3>${labels[section]}</h3><span>${entries.length} on this page</span></div><div class="shelf-items ${view}">${entries.map((i) => itemCard(i)).join('')}</div><div class="wood-edge"></div></div>`,
+        `<div class="shelf-group"><div class="shelf-label">${icon(section === 'books' ? 'book' : section)}<h3>${labels[section]}</h3><span>${entries.length} on this page</span></div>${Array.from(
+          { length: Math.ceil(entries.length / (view === 'spines' ? 18 : 6)) },
+          (_, row) =>
+            `<div class="shelf-bay"><div class="shelf-items ${view}">${entries
+              .slice(row * (view === 'spines' ? 18 : 6), (row + 1) * (view === 'spines' ? 18 : 6))
+              .map((i) => itemCard(i))
+              .join('')}</div><div class="wood-edge"></div></div>`,
+        ).join('')}</div>`,
     )
     .join('');
 }

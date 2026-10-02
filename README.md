@@ -9,7 +9,7 @@ SelfLib **0.1.0** is a single-owner first milestone. It connects to **Audiobooks
 ## What works
 
 - Responsive entrance, book/audiobook shelves, comic/manga volumes, and movie/TV cases.
-- Cover/spine browsing, generated covers and spines, keyboard-accessible native detail dialogs.
+- Physical wooden bookcases with backboards, side posts and a plank under every row. Spine-first browsing, varied book heights/thicknesses, pull-out hover/focus interactions, a cover view, and keyboard-accessible detail dialogs.
 - Full-text metadata search, persistent favorites, and mixed collections.
 - Source-reported reading/listening/watching progress as of the last manual sync.
 - Connection setup, testing, editing, removal, manual sync, health and timestamps.

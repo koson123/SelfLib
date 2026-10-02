@@ -1809,3 +1809,154 @@ dialog::backdrop {
     transform: none;
   }
 }
+
+/* Physical bookcases: every row has its own backboard, side posts and shelf. */
+.shelf-group {
+  padding: 12px 14px 16px;
+  border: 1px solid #50351f;
+  border-radius: 5px 5px 2px 2px;
+  background:
+    repeating-linear-gradient(91deg, #ffffff04 0 2px, #23140810 3px 5px, transparent 6px 19px),
+    linear-gradient(90deg, #67452c, #a37850 3%, #875d39 50%, #aa8055 97%, #634129);
+  box-shadow:
+    inset 0 2px 1px #e4bd8480,
+    0 14px 25px #3b241e20;
+}
+.shelf-label {
+  color: #f5e5c4;
+  margin: 0;
+  padding: 7px 10px 15px;
+  text-shadow: 0 1px 2px #33200f;
+}
+.shelf-label h3 {
+  font-size: 20px;
+}
+.shelf-label span {
+  color: #ebd4b1;
+}
+.shelf-label svg {
+  color: #e3c28a;
+}
+.shelf-bay {
+  border-left: 5px solid #b38a5b;
+  border-right: 5px solid #91663e;
+  box-shadow:
+    -2px 0 0 #48321f,
+    2px 0 0 #48321f;
+}
+.shelf-items,
+.shelf-items.spines {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  padding: 24px 20px 0;
+  min-height: 244px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #bb9668 #58402c;
+  background:
+    linear-gradient(#241a13aa, transparent 35%, #1b120d55),
+    repeating-linear-gradient(0deg, #ffffff03 0 1px, transparent 2px 35px),
+    linear-gradient(90deg, #684c33, #806143 50%, #60432c);
+  box-shadow: inset 0 8px 15px #1e120a80;
+}
+.shelf-items .item {
+  flex: 0 0 clamp(115px, 13vw, 164px);
+  padding: 0 4px;
+}
+.shelf-items .item-open {
+  gap: 0;
+  align-items: center;
+}
+.shelf-items .item-caption {
+  display: none;
+}
+.shelf-items .object {
+  height: 204px;
+  width: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+}
+.shelf-items .item:nth-child(3n + 2) .object {
+  height: 190px;
+}
+.shelf-items .item:nth-child(4n + 3) .object {
+  height: 216px;
+}
+.shelf-items.spines .item {
+  flex-basis: 43px;
+  padding: 0;
+}
+.shelf-items.spines .object {
+  width: 43px;
+}
+.shelf-items.spines .item:nth-child(3n + 2) {
+  flex-basis: 37px;
+}
+.shelf-items.spines .item:nth-child(3n + 2) .object {
+  width: 37px;
+}
+.shelf-items.spines .item:nth-child(5n) .object {
+  transform: rotate(-4deg);
+  transform-origin: right bottom;
+}
+.shelf-items.spines .object {
+  border-top: 3px solid #eee2bd;
+  border-bottom: 5px solid #0003;
+  background: linear-gradient(90deg, #0004, transparent 25%, #ffffff15 60%, #0005), var(--cover);
+  box-shadow:
+    inset 2px 0 0 #ffffff35,
+    inset -2px 0 0 #0005,
+    4px 0 5px #160e0a80;
+}
+.shelf-items.spines .spine-title {
+  max-height: 175px;
+  padding: 16px 8px;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px #0006;
+}
+.shelf-items .item-open:hover .object,
+.shelf-items .item-open:focus-visible .object {
+  transform: translateY(-13px) rotate(-5deg);
+  filter: brightness(1.12);
+}
+.wood-edge {
+  height: 19px;
+  border-top: 2px solid #d1aa77;
+  border-bottom: 3px solid #49321e;
+  border-radius: 0;
+  background:
+    repeating-linear-gradient(1deg, transparent 0 3px, #4e311b22 4px 5px),
+    linear-gradient(#b48a59, #977047 50%, #75512f 52%, #9d754c);
+  box-shadow: 0 7px 8px #26170c55;
+}
+.shelf-bay + .shelf-bay {
+  margin-top: 0;
+}
+@media (max-width: 600px) {
+  .shelf-group {
+    padding: 9px 8px 12px;
+  }
+  .shelf-label {
+    padding: 7px 3px 12px;
+    gap: 5px;
+  }
+  .shelf-label h3 {
+    font-size: 16px;
+  }
+  .shelf-label span {
+    font-size: 8px;
+  }
+  .shelf-items,
+  .shelf-items.spines {
+    padding-left: 13px;
+    padding-right: 13px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shelf-items .item-open:hover .object,
+  .shelf-items .item-open:focus-visible .object {
+    transform: none;
+  }
+}
