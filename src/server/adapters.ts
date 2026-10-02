@@ -60,6 +60,7 @@ const absItem = z.object({
 const komgaItem = z.object({
   id: idSchema,
   seriesTitle: z.string().optional(),
+  libraryId: idSchema.optional(),
   name: z.string().optional(),
   media: z.object({ pagesCount: z.number() }),
   metadata: z.object({
@@ -80,7 +81,7 @@ const jellyItem = z.object({
   SeriesName: z.string().optional(),
   RunTimeTicks: z.number().optional(),
   People: z.array(z.object({ Name: z.string(), Type: z.string() })).optional(),
-  ImageTags: z.object({ Primary: z.string().optional() }).optional(),
+  ImageTags: z.object({ Primary: z.string().optional(), Box: z.string().optional() }).optional(),
   UserData: z
     .object({
       PlaybackPositionTicks: z.number().optional(),
@@ -102,8 +103,20 @@ export function createAdapter(
         : { Authorization: `Bearer ${source.credential}` };
   const transport = options.transport || sourceTransport(source, headers, options.allowLoopback);
   const publicUrl = validateBase(source.publicUrl);
-  const artwork = async (item: CatalogItem) =>
-    item.artworkPath ? transport.image(item.artworkPath) : undefined;
+  const artwork = async (item: CatalogItem) => {
+    if (!item.artworkPath) return undefined;
+    try {
+      return await transport.image(item.artworkPath);
+    } catch (error) {
+      if (
+        item.artworkFallbackPath &&
+        error instanceof Error &&
+        /HTTP (404|406)|format is unsupported/.test(error.message)
+      )
+        return transport.image(item.artworkFallbackPath);
+      throw error;
+    }
+  };
   if (source.type === 'audiobookshelf') {
     let libraries: string[] | undefined;
     let progress = new Map<string, Progress>();
@@ -182,7 +195,8 @@ export function createAdapter(
       handoff: (item) => `${publicUrl}/item/${idSchema.parse(item.sourceItemId)}`,
     };
   }
-  if (source.type === 'komga')
+  if (source.type === 'komga') {
+    let libraries: { id: string; name: string }[] | undefined;
     return {
       type: source.type,
       capabilities: supported,
@@ -195,6 +209,10 @@ export function createAdapter(
         return { account: me.email };
       },
       async page(cursor = '0') {
+        libraries ??= z
+          .array(z.object({ id: idSchema, name: z.string() }))
+          .max(1000)
+          .parse(await transport.json('/api/v1/libraries'));
         const page = Number(cursor);
         const result = z
           .object({ content: z.array(komgaItem), last: z.boolean() })
@@ -205,36 +223,56 @@ export function createAdapter(
             ),
           );
         return {
-          items: result.content.map((item) => ({
-            sourceId: source.id,
-            sourceItemId: item.id,
-            section: 'comics',
-            kind: item.metadata.tags?.some((tag) => tag.trim().toLowerCase() === 'manga')
-              ? 'manga'
-              : 'comic',
-            title: text(item.metadata.title || item.name, 500),
-            creator: text(item.metadata.authors?.map((a) => a.name).join(', '), 500),
-            description: text(item.metadata.summary),
-            series: text(item.seriesTitle, 500),
-            artworkPath: `/api/v1/books/${item.id}/thumbnail`,
-            progress: item.readProgress
-              ? {
-                  fraction: item.readProgress.completed
-                    ? 1
-                    : fraction(item.readProgress.page / Math.max(1, item.media.pagesCount)),
-                  position: item.readProgress.page,
-                  unit: 'pages',
-                  updatedAt: item.readProgress.lastModified,
-                }
-              : undefined,
-            actions: actions(),
-          })),
+          items: result.content.map((item) => {
+            const library = libraries!.find((library) => library.id === item.libraryId);
+            const room =
+              (item.libraryId && source.libraryRooms?.[item.libraryId]) ||
+              (library?.name.trim().toLowerCase() === 'manga'
+                ? 'manga'
+                : library?.name.trim().toLowerCase().replace(/[ _-]/g, '') === 'graphicnovels'
+                  ? 'graphicnovels'
+                  : undefined);
+            return {
+              sourceId: source.id,
+              sourceItemId: item.id,
+              section: 'comics',
+              kind:
+                room === 'graphicnovels'
+                  ? 'graphicnovel'
+                  : room === 'manga'
+                    ? 'manga'
+                    : room === 'comics'
+                      ? 'comic'
+                      : item.metadata.tags?.some((tag) => tag.trim().toLowerCase() === 'manga')
+                        ? 'manga'
+                        : 'comic',
+              libraryId: item.libraryId,
+              libraryName: library?.name,
+              title: text(item.metadata.title || item.name, 500),
+              creator: text(item.metadata.authors?.map((a) => a.name).join(', '), 500),
+              description: text(item.metadata.summary),
+              series: text(item.seriesTitle, 500),
+              artworkPath: `/api/v1/books/${item.id}/thumbnail`,
+              progress: item.readProgress
+                ? {
+                    fraction: item.readProgress.completed
+                      ? 1
+                      : fraction(item.readProgress.page / Math.max(1, item.media.pagesCount)),
+                    position: item.readProgress.page,
+                    unit: 'pages',
+                    updatedAt: item.readProgress.lastModified,
+                  }
+                : undefined,
+              actions: actions(),
+            };
+          }),
           nextCursor: result.last ? undefined : String(page + 1),
         };
       },
       // Open the detail route: Komga chooses the appropriate PDF/comic or EPUB reader.
       handoff: (item) => `${publicUrl}/book/${idSchema.parse(item.sourceItemId)}`,
     };
+  }
   let userId: string | undefined;
   return {
     type: source.type,
@@ -278,9 +316,14 @@ export function createAdapter(
           ),
           description: text(item.Overview),
           series: text(item.SeriesName, 500),
-          artworkPath: item.ImageTags?.Primary
-            ? `/Items/${item.Id}/Images/Primary?maxWidth=360&quality=80`
-            : undefined,
+          artworkPath:
+            item.ImageTags?.Box || item.ImageTags?.Primary
+              ? `/Items/${item.Id}/Images/${item.ImageTags.Box ? 'Box' : 'Primary'}?maxWidth=360&quality=80`
+              : undefined,
+          artworkFallbackPath:
+            item.ImageTags?.Box && item.ImageTags.Primary
+              ? `/Items/${item.Id}/Images/Primary?maxWidth=360&quality=80`
+              : undefined,
           progress:
             item.Type !== 'Series' && item.UserData && item.RunTimeTicks
               ? {

@@ -16,6 +16,7 @@ import {
   validateBase,
   sourceTransport,
 } from './security.js';
+import { artworkBytes, mountArtwork, panoramaValid } from './artwork.js';
 import { createAdapter } from './adapters.js';
 import { demoItems } from './demo.js';
 import { categoryKinds, shelfCategories } from '../shared.js';
@@ -53,6 +54,10 @@ const connectionSchema = z.object({
   jellyfinUsername: z.string().min(1).max(128).optional(),
   jellyfinPassword: z.string().min(1).max(256).optional(),
   allowPrivate: z.boolean().default(false),
+  libraryRooms: z
+    .record(z.string().regex(/^[\w-]{1,200}$/), z.enum(['comics', 'manga', 'graphicnovels']))
+    .refine((value) => Object.keys(value).length <= 100)
+    .default({}),
 });
 const collectionSchema = z.object({ name: z.string().trim().min(1).max(80) });
 const safeId = z.string().regex(/^[\w-]{1,200}$/);
@@ -107,6 +112,14 @@ export function createApplication(options: AppOptions) {
     }
     next();
   });
+  app.use(
+    '/api/items/:id/custom-artwork/:role',
+    express.json({ limit: '720kb', type: 'application/json' }),
+  );
+  app.use(
+    '/api/collections/:id/panorama',
+    express.json({ limit: '720kb', type: 'application/json' }),
+  );
   app.use(express.json({ limit: '32kb', type: 'application/json' }));
   function cookie(req: Request, name: string) {
     const raw = req.headers.cookie
@@ -271,6 +284,7 @@ export function createApplication(options: AppOptions) {
       publicUrl: String(row.public_url),
       credential: decrypt(String(row.secret), key),
       allowPrivate: !!row.allow_private,
+      libraryRooms: JSON.parse(String(row.library_rooms || '{}')),
     };
   }
   function getSource(id: string) {
@@ -286,6 +300,7 @@ export function createApplication(options: AppOptions) {
       name: input.name,
       allowPrivate: input.allowPrivate,
       credential: input.credential,
+      libraryRooms: input.libraryRooms,
       url: validateBase(input.url),
       publicUrl: validateBase(input.publicUrl || input.url),
     };
@@ -332,10 +347,15 @@ export function createApplication(options: AppOptions) {
       sources: (
         db
           .prepare(
-            'SELECT id,type,name,url,public_url,allow_private,health,error,last_attempt,last_sync FROM sources',
+            'SELECT id,type,name,url,public_url,allow_private,health,error,last_attempt,last_sync,library_rooms FROM sources',
           )
           .all() as Row[]
-      ).map((row) => ({ ...row, syncing: jobs.has(String(row.id)), credentialStored: true })),
+      ).map((row) => ({
+        ...row,
+        syncing: jobs.has(String(row.id)),
+        credentialStored: true,
+        libraryRooms: JSON.parse(String(row.library_rooms)),
+      })),
     });
   });
   app.post('/api/sources/test', async (req, res) => {
@@ -354,7 +374,7 @@ export function createApplication(options: AppOptions) {
     }
     const s = await inputSource(req.body);
     db.prepare(
-      'INSERT INTO sources (id,type,name,url,public_url,secret,allow_private) VALUES (?,?,?,?,?,?,?)',
+      'INSERT INTO sources (id,type,name,url,public_url,secret,allow_private,library_rooms) VALUES (?,?,?,?,?,?,?,?)',
     ).run(
       s.id,
       s.type,
@@ -363,6 +383,7 @@ export function createApplication(options: AppOptions) {
       s.publicUrl,
       encrypt(s.credential, key),
       s.allowPrivate ? 1 : 0,
+      JSON.stringify(s.libraryRooms || {}),
     );
     res.status(201).json({ id: s.id });
   });
@@ -373,11 +394,15 @@ export function createApplication(options: AppOptions) {
       return;
     }
     const s = await inputSource(
-      { ...req.body, credential: req.body.credential || old.credential },
+      {
+        ...req.body,
+        credential: req.body.credential || old.credential,
+        libraryRooms: req.body.libraryRooms ?? old.libraryRooms,
+      },
       old.id,
     );
     db.prepare(
-      'UPDATE sources SET type=?,name=?,url=?,public_url=?,secret=?,allow_private=?,health=?,error=NULL WHERE id=?',
+      'UPDATE sources SET type=?,name=?,url=?,public_url=?,secret=?,allow_private=?,library_rooms=?,health=?,error=NULL WHERE id=?',
     ).run(
       s.type,
       s.name,
@@ -385,10 +410,38 @@ export function createApplication(options: AppOptions) {
       s.publicUrl,
       encrypt(s.credential, key),
       s.allowPrivate ? 1 : 0,
+      JSON.stringify(s.libraryRooms || {}),
       'untested',
       s.id,
     );
     res.json({ ok: true });
+  });
+  app.post('/api/sources/:id/clear-artwork', (req, res) => {
+    const source = getSource(String(req.params.id));
+    if (jobs.has(source.id)) {
+      res.status(409).json({ error: 'Wait for synchronization to finish.' });
+      return;
+    }
+    db.prepare('UPDATE items SET artwork=NULL,mime=NULL WHERE source_id=?').run(source.id);
+    res.json({ ok: true });
+  });
+  app.get('/api/sources/:id/libraries', async (req, res) => {
+    const source = getSource(String(req.params.id));
+    if (source.type !== 'komga') {
+      res.status(400).json({ error: 'Library mapping is available for Komga.' });
+      return;
+    }
+    const libraries = z
+      .array(z.object({ id: safeId, name: z.string().max(500) }))
+      .max(1000)
+      .parse(
+        await sourceTransport(
+          source,
+          { 'X-API-Key': source.credential },
+          options.allowLoopback,
+        ).json('/api/v1/libraries'),
+      );
+    res.json({ libraries });
   });
   app.post('/api/sources/:id/test', async (req, res) => {
     const s = getSource(String(req.params.id));
@@ -496,9 +549,7 @@ export function createApplication(options: AppOptions) {
         const cached = db.prepare('SELECT artwork FROM items WHERE id=?').get(id) as Row;
         if (cached.artwork || !item.artworkPath) continue;
         if (++count > 200) break;
-        const used = Number(
-          (db.prepare('SELECT coalesce(sum(length(artwork)),0) AS n FROM items').get() as Row).n,
-        );
+        const used = artworkBytes(db);
         if (used >= (options.cacheBytes || 64 * 1024 * 1024)) break;
         try {
           const image = await adapter.artwork(item);
@@ -555,7 +606,17 @@ export function createApplication(options: AppOptions) {
       ...withoutArtwork(item),
       id: String(row.id),
       favorite: !!row.favorite,
-      artwork: !!row.artwork,
+      artwork:
+        !!row.artwork ||
+        !!db
+          .prepare("SELECT 1 FROM item_artwork WHERE item_id=? AND role='cover'")
+          .get(String(row.id)),
+      customCover: !!db
+        .prepare("SELECT 1 FROM item_artwork WHERE item_id=? AND role='cover'")
+        .get(String(row.id)),
+      customSpine: !!db
+        .prepare("SELECT 1 FROM item_artwork WHERE item_id=? AND role='spine'")
+        .get(String(row.id)),
       demo: !!row.demo,
       sourceName: String(row.source_name || 'Fictional demonstration'),
     };
@@ -595,22 +656,34 @@ export function createApplication(options: AppOptions) {
       );
     const sql = `FROM items i LEFT JOIN sources s ON s.id=i.source_id LEFT JOIN favorites f ON f.item_id=i.id WHERE ${where.join(' AND ')}`;
     const total = (db.prepare(`SELECT count(*) AS n ${sql}`).get(...params) as Row).n;
+    const order = req.query.collection
+      ? '(SELECT rowid FROM collection_items WHERE collection_id=? AND item_id=i.id)'
+      : 'i.title COLLATE NOCASE,i.id';
+    const orderParams = req.query.collection ? [safeId.parse(req.query.collection)] : [];
     const rows = db
       .prepare(
-        `SELECT i.*,s.name AS source_name,f.item_id AS favorite ${sql} ORDER BY i.title COLLATE NOCASE,i.id LIMIT ? OFFSET ?`,
+        `SELECT i.*,s.name AS source_name,f.item_id AS favorite ${sql} ORDER BY ${order} LIMIT ? OFFSET ?`,
       )
-      .all(...params, limit, offset) as Row[];
+      .all(...params, ...orderParams, limit, offset) as Row[];
     res.json({ items: rows.map(view), total, offset, limit });
   });
+  mountArtwork(app, db, options.cacheBytes || 64 * 1024 * 1024);
   app.get('/api/items/:id/artwork', (req, res) => {
-    const row = db
-      .prepare('SELECT artwork,mime FROM items WHERE id=?')
+    const custom = db
+      .prepare("SELECT bytes AS artwork,mime FROM item_artwork WHERE item_id=? AND role='cover'")
       .get(String(req.params.id)) as Row | undefined;
+    const row =
+      custom ||
+      (db.prepare('SELECT artwork,mime FROM items WHERE id=?').get(String(req.params.id)) as
+        Row | undefined);
     if (!row?.artwork) {
       res.status(404).json({ error: 'Artwork not cached.' });
       return;
     }
-    res.type(String(row.mime)).send(Buffer.from(row.artwork as Uint8Array));
+    res
+      .set('Cache-Control', 'private, no-store')
+      .type(String(row.mime))
+      .send(Buffer.from(row.artwork as Uint8Array));
   });
   app.get('/api/items/:id/open', (req, res) => {
     const row = db.prepare('SELECT data,demo FROM items WHERE id=?').get(String(req.params.id)) as
@@ -645,9 +718,10 @@ export function createApplication(options: AppOptions) {
     res.json({
       collections: db
         .prepare(
-          'SELECT c.*,count(ci.item_id) AS count FROM collections c LEFT JOIN collection_items ci ON ci.collection_id=c.id GROUP BY c.id ORDER BY c.name',
+          'SELECT c.*,count(ci.item_id) AS count,EXISTS(SELECT 1 FROM collection_artwork a WHERE a.collection_id=c.id) AS panorama FROM collections c LEFT JOIN collection_items ci ON ci.collection_id=c.id GROUP BY c.id ORDER BY c.name',
         )
-        .all(),
+        .all()
+        .map((row) => ({ ...row, panorama: !!row.panorama && panoramaValid(db, String(row.id)) })),
     }),
   );
   app.post('/api/collections', (req, res) => {
@@ -707,9 +781,11 @@ export function createApplication(options: AppOptions) {
     }
     if (
       error instanceof Error &&
-      /^(Jellyfin sign-in requires|Enter an API key\/user token)/.test(error.message)
+      /^(Jellyfin sign-in requires|Enter an API key\/user token|Upload a PNG|Artwork cache is full)/.test(
+        error.message,
+      )
     ) {
-      res.status(400).json({ error: error.message });
+      res.status(status >= 400 && status < 500 ? status : 400).json({ error: error.message });
       return;
     }
     if (status >= 400 && status < 500) {
@@ -737,7 +813,7 @@ export function createApplication(options: AppOptions) {
   };
 }
 function withoutArtwork(item: CatalogItem) {
-  const { artworkPath: _, ...safe } = item;
+  const { artworkPath: _, artworkFallbackPath: _fallback, ...safe } = item;
   return safe;
 }
 export function itemIdentity(item: CatalogItem) {
@@ -746,7 +822,7 @@ export function itemIdentity(item: CatalogItem) {
 function saveItem(db: DatabaseSync, item: CatalogItem, demo = false) {
   const id = demo ? item.sourceItemId : itemIdentity(item);
   db.prepare(
-    'INSERT INTO items (id,source_id,remote_id,section,title,creator,description,data,demo) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET section=excluded.section,title=excluded.title,creator=excluded.creator,description=excluded.description,data=excluded.data',
+    `INSERT INTO items (id,source_id,remote_id,section,title,creator,description,data,demo) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET section=excluded.section,title=excluded.title,creator=excluded.creator,description=excluded.description,artwork=CASE WHEN json_extract(items.data,'$.artworkPath') IS NOT json_extract(excluded.data,'$.artworkPath') THEN NULL ELSE items.artwork END,mime=CASE WHEN json_extract(items.data,'$.artworkPath') IS NOT json_extract(excluded.data,'$.artworkPath') THEN NULL ELSE items.mime END,data=excluded.data`,
   ).run(
     id,
     item.sourceId,

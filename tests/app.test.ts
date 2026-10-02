@@ -8,15 +8,20 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createApplication } from '../src/server/app.js';
 import { openDatabase } from '../src/server/db.js';
-import { fixtureServer, secret, fixtures } from './fixtures.js';
+import { fixtureServer, secret, fixtures, png } from './fixtures.js';
 import type { SourceType } from '../src/shared.js';
 
-async function harness(dir = mkdtempSync(join(tmpdir(), 'selflib-test-')), secure = false) {
+async function harness(
+  dir = mkdtempSync(join(tmpdir(), 'selflib-test-')),
+  secure = false,
+  cacheBytes?: number,
+) {
   const instance = createApplication({
     dataDir: dir,
     appUrl: secure ? 'https://library.example.org' : 'http://library.example.org',
     allowLoopback: true,
     maxItems: 100,
+    cacheBytes,
   });
   const server = instance.app.listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.on('listening', resolve));
@@ -304,16 +309,16 @@ test('database migrations are idempotent, reject future schemas and detect missi
     let db = openDatabase(dir);
     assert.equal(
       (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
-      1,
+      2,
     );
     db.close();
     db = openDatabase(dir);
-    assert.equal((db.prepare('SELECT count(*) AS n FROM migrations').get() as { n: number }).n, 1);
+    assert.equal((db.prepare('SELECT count(*) AS n FROM migrations').get() as { n: number }).n, 2);
     db.exec('PRAGMA user_version=99');
     db.close();
     assert.throws(() => openDatabase(dir), /newer/);
     db = new DatabaseSync(join(dir, 'selflib.sqlite'));
-    db.exec('PRAGMA user_version=1');
+    db.exec('PRAGMA user_version=2');
     db.close();
     const h = await harness(dir);
     await h.setup();
@@ -534,6 +539,270 @@ test('Jellyfin viewer sign-in exchanges passwords server-side and stores only en
   } finally {
     await h.close();
     await fixture.close();
+    rmSync(h.dir, { recursive: true, force: true });
+  }
+});
+
+test('private artwork uploads, box-set ordering, persistence and removal', async () => {
+  let h = await harness();
+  const dir = h.dir;
+  try {
+    await h.setup();
+    const rows = (await h.request('/api/items?demo=true&category=books')).json.items as {
+      id: string;
+    }[];
+    const ids = [rows[1].id, rows[0].id];
+    const image = { mime: 'image/png', base64: png.toString('base64') };
+    const cid = String(
+      (await h.request('/api/collections', 'POST', { name: 'Fictional set' })).json.id,
+    );
+    for (const id of ids)
+      await h.request('/api/collections/' + cid + '/items/' + id, 'PUT', { included: true });
+    assert.deepEqual(
+      (
+        (await h.request('/api/items?demo=true&collection=' + cid)).json.items as { id: string }[]
+      ).map((item) => item.id),
+      ids,
+    );
+    assert.equal(
+      (await h.request('/api/items/' + ids[0] + '/custom-artwork/spine', 'PUT', image)).response
+        .status,
+      200,
+    );
+    assert.equal(
+      (await h.request('/api/items/' + ids[0] + '/custom-artwork/cover', 'PUT', image)).response
+        .status,
+      200,
+    );
+    assert.equal(
+      (await h.request('/api/collections/' + cid + '/panorama', 'PUT', image)).response.status,
+      200,
+    );
+    assert.equal((await h.request('/api/items/' + ids[0] + '/artwork')).response.status, 200);
+    const layout = await h.request('/api/collections/' + cid + '/spine-layout.css');
+    assert.match(layout.text, /width:200%/);
+    assert.match(layout.text, /translateX\(-50%\)/);
+    assert.equal(
+      (
+        await h.request('/api/items/' + ids[0] + '/custom-artwork/spine', 'PUT', image, {
+          'X-CSRF-Token': 'wrong',
+        })
+      ).response.status,
+      403,
+    );
+    assert.equal(
+      (
+        await h.request('/api/items/' + ids[0] + '/custom-artwork/cover', 'PUT', {
+          mime: 'image/png',
+          base64: Buffer.from('<svg onload=alert(1)></svg>').toString('base64'),
+        })
+      ).response.status,
+      400,
+    );
+    assert.equal(
+      (
+        await h.request('/api/items/' + ids[0] + '/custom-artwork/cover', 'PUT', {
+          mime: 'image/svg+xml',
+          base64: image.base64,
+        })
+      ).response.status,
+      400,
+    );
+    assert.equal(
+      (
+        await h.request('/api/items/' + ids[0] + '/custom-artwork/cover', 'PUT', {
+          mime: 'image/png',
+          base64: Buffer.alloc(512 * 1024 + 1).toString('base64'),
+        })
+      ).response.status,
+      400,
+    );
+    await h.request('/api/items/' + ids[0] + '/favorite', 'PUT', { favorite: true });
+    await h.close();
+    h = await harness(dir);
+    await h.request('/api/status');
+    assert.equal(
+      (await h.request('/api/items/' + ids[0] + '/custom-artwork/spine')).response.status,
+      401,
+    );
+    assert.equal(
+      (await h.request('/api/collections/' + cid + '/spine-layout.css')).response.status,
+      401,
+    );
+    await h.request('/api/login', 'POST', {
+      username: 'reader',
+      password: 'a-very-long-fixture-password',
+    });
+    const item = (
+      (await h.request('/api/items?demo=true&favorite=true')).json.items as {
+        customSpine: boolean;
+        customCover: boolean;
+      }[]
+    )[0];
+    assert.equal(item.customSpine, true);
+    assert.equal(item.customCover, true);
+    assert.equal((await h.request('/api/collections/' + cid + '/panorama')).response.status, 200);
+    const movie = (
+      (await h.request('/api/items?demo=true&category=movies')).json.items as { id: string }[]
+    )[0];
+    await h.request('/api/collections/' + cid + '/items/' + movie.id, 'PUT', { included: true });
+    assert.equal(
+      (await h.request('/api/collections/' + cid + '/panorama', 'PUT', image)).response.status,
+      409,
+    );
+    assert.ok(
+      (
+        (await h.request('/api/collections')).json.collections as {
+          id: string;
+          panorama: boolean;
+        }[]
+      ).find((c) => c.id === cid)?.panorama === false,
+    );
+    await h.request('/api/items/' + ids[0] + '/custom-artwork/spine', 'DELETE', {});
+    assert.equal(
+      (await h.request('/api/items/' + ids[0] + '/custom-artwork/spine')).response.status,
+      404,
+    );
+    await h.request('/api/collections/' + cid, 'DELETE', {});
+    assert.equal((await h.request('/api/collections/' + cid + '/panorama')).response.status, 404);
+  } finally {
+    await h.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('schema 1 upgrade retains owner, favorites, memberships and encrypted connections', async () => {
+  const h = await harness();
+  const dir = h.dir;
+  try {
+    await h.setup();
+    const id = ((await h.request('/api/items?demo=true')).json.items as { id: string }[])[0].id;
+    await h.request('/api/items/' + id + '/favorite', 'PUT', { favorite: true });
+    const cid = String(
+      (await h.request('/api/collections', 'POST', { name: 'Old membership' })).json.id,
+    );
+    await h.request('/api/collections/' + cid + '/items/' + id, 'PUT', { included: true });
+    await h.request('/api/sources', 'POST', {
+      type: 'komga',
+      name: 'Old connection',
+      url: 'https://media.example.org',
+      credential: secret,
+    });
+    await h.close();
+    let db = new DatabaseSync(join(dir, 'selflib.sqlite'));
+    const encrypted = db.prepare('SELECT secret FROM sources').get()!.secret;
+    db.exec(
+      'DROP TABLE item_artwork; DROP TABLE collection_artwork; ALTER TABLE sources DROP COLUMN library_rooms; DELETE FROM migrations WHERE version=2; PRAGMA user_version=1;',
+    );
+    db.close();
+    db = openDatabase(dir);
+    assert.equal(db.prepare('PRAGMA user_version').get()!.user_version, 2);
+    assert.equal(db.prepare('SELECT secret FROM sources').get()!.secret, encrypted);
+    assert.equal(db.prepare('SELECT count(*) AS n FROM favorites').get()!.n, 1);
+    assert.equal(db.prepare('SELECT count(*) AS n FROM collection_items').get()!.n, 1);
+    assert.equal(db.prepare('SELECT library_rooms FROM sources').get()!.library_rooms, '{}');
+    assert.equal(db.prepare('SELECT count(*) AS n FROM owner').get()!.n, 1);
+    db.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('custom artwork shares the global budget and does not evict a previous image on failure', async () => {
+  const h = await harness(undefined, false, png.length);
+  try {
+    await h.setup();
+    const id = ((await h.request('/api/items?demo=true')).json.items as { id: string }[])[0].id;
+    const image = { mime: 'image/png', base64: png.toString('base64') };
+    assert.equal(
+      (await h.request('/api/items/' + id + '/custom-artwork/cover', 'PUT', image)).response.status,
+      200,
+    );
+    const denied = await h.request('/api/items/' + id + '/custom-artwork/spine', 'PUT', image);
+    assert.equal(denied.response.status, 409);
+    assert.match(denied.text, /cache is full/);
+    assert.equal(
+      (await h.request('/api/items/' + id + '/custom-artwork/cover')).response.status,
+      200,
+    );
+    assert.equal(
+      (await h.request('/api/items/' + id + '/custom-artwork/spine')).response.status,
+      404,
+    );
+  } finally {
+    await h.close();
+    rmSync(h.dir, { recursive: true, force: true });
+  }
+});
+
+test('Komga library mapping is configurable, survives connection editing, and strips filesystem roots', async () => {
+  const h = await harness();
+  const server = await fixtureServer();
+  try {
+    await h.setup();
+    const body = {
+      type: 'komga',
+      name: 'Libraries',
+      url: server.url,
+      credential: secret,
+      allowPrivate: true,
+      libraryRooms: { 'comic-lib': 'graphicnovels' },
+    };
+    const id = String((await h.request('/api/sources', 'POST', body)).json.id);
+    const libraries = await h.request('/api/sources/' + id + '/libraries');
+    assert.equal(libraries.response.status, 200);
+    assert.ok(!libraries.text.includes('/private-library-root'));
+    assert.deepEqual(
+      (libraries.json.libraries as { id: string }[]).map((library) => library.id),
+      ['comic-lib', 'manga-lib', 'graphic-lib'],
+    );
+    const { libraryRooms: _, ...edited } = body;
+    assert.equal(
+      (await h.request('/api/sources/' + id, 'PUT', { ...edited, credential: '', name: 'Renamed' }))
+        .response.status,
+      200,
+    );
+    assert.equal(
+      (await h.request('/api/sources/' + id + '/sync', 'POST', {})).response.status,
+      202,
+    );
+    await waitSync(h, id);
+    assert.equal((await h.request('/api/items?category=graphicnovels')).json.total, 1);
+    assert.equal((await h.request('/api/items?category=comics')).json.total, 0);
+    const itemId = String(
+      ((await h.request('/api/items?category=graphicnovels')).json.items as { id: string }[])[0].id,
+    );
+    await h.request('/api/items/' + itemId + '/favorite', 'PUT', { favorite: true });
+    await h.request('/api/items/' + itemId + '/custom-artwork/spine', 'PUT', {
+      mime: 'image/png',
+      base64: png.toString('base64'),
+    });
+    assert.equal(
+      (await h.request('/api/sources/' + id + '/clear-artwork', 'POST', {})).response.status,
+      200,
+    );
+    assert.equal(
+      h.instance.db.prepare('SELECT artwork FROM items WHERE id=?').get(itemId)!.artwork,
+      null,
+    );
+    assert.equal((await h.request('/api/items?favorite=true')).json.total, 1);
+    assert.equal(
+      (await h.request('/api/items/' + itemId + '/custom-artwork/spine')).response.status,
+      200,
+    );
+
+    assert.equal(
+      (
+        await h.request('/api/sources', 'POST', {
+          ...body,
+          libraryRooms: { 'comic-lib': 'unknown-room' },
+        })
+      ).response.status,
+      400,
+    );
+  } finally {
+    await h.close();
+    await server.close();
     rmSync(h.dir, { recursive: true, force: true });
   }
 });

@@ -60,9 +60,20 @@ This replaces the salted password hash and revokes all sessions. `node dist/main
 
 ## Upgrades and releases
 
-Before every upgrade: stop, snapshot the entire data directory, record your current version, and review the changelog. Build the desired release tag, restart, and check health/login/sources. Don't use `docker compose down -v` on a real install: it deletes the named volume.
+Before every upgrade: stop, snapshot the entire data directory, record your current version, and review the changelog. Windows Command Prompt example for updating the implementation branch:
 
-0.1.0 supports a new database or its own schema 1. No older SelfLib production schema exists. Future binaries must explicitly migrate supported versions. Downgrades are unsupported after schema changes; restore the old snapshot with its old binary instead. A newer `user_version` produces an actionable startup failure.
+```cmd
+docker compose stop
+docker compose cp selflib:/data ..\SelfLib-backup-before-artwork
+git pull --ff-only
+docker compose up -d --build
+```
+
+Keep that backup outside the Git checkout: it includes the secret key and private database. Use a new backup folder for later upgrades. If copying fails, retain the stopped old container until you have a complete snapshot; `docker compose start` restarts the existing version. Refresh your browser after rebuilding.
+
+Build the desired release tag, restart, and check health/login/sources. Don't use `docker compose down -v` on a real install: it deletes the named volume.
+
+The unreleased 0.1.0 branch now uses schema 2 and transactionally migrates its earlier schema 1. The migration adds library-room configuration and private artwork tables without changing owner accounts, credentials, item IDs, favorites or collection memberships. Back up the whole stopped `/data` directory before upgrading. Schema 1 binaries cannot open the upgraded database; rollback requires the pre-upgrade database/key snapshot and matching old binary. Future binaries must explicitly migrate supported versions. Downgrades are unsupported after schema changes; restore the old snapshot with its old binary instead. A newer `user_version` produces an actionable startup failure.
 
 Version policy: semantic versions, with `0.x` indicating an evolving API/adapter contract. Stable public image tags are exact release tags (`v0.1.0` style), not an assumed `latest`. A maintainer must ensure checks/container smoke pass, publish the Git tag/release, and manually dispatch the image workflow on that tag with `publish=true`. Verify GHCR package visibility and pullability before editing installation docs to name an available image. The initial PR does not publish a package or release.
 

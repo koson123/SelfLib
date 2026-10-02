@@ -4,6 +4,49 @@ import { join } from 'node:path';
 test('owner onboarding, fictional shelves, favorites, mixed collections, and source connection', async ({
   page,
 }, info) => {
+  const artwork = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 780;
+    canvas.height = 420;
+    const ctx = canvas.getContext('2d')!;
+    const sky = ctx.createLinearGradient(0, 0, 0, 420);
+    sky.addColorStop(0, '#152b3a');
+    sky.addColorStop(1, '#487264');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, 780, 420);
+    ctx.fillStyle = '#f5db99';
+    ctx.beginPath();
+    ctx.arc(575, 90, 52, 0, Math.PI * 2);
+    ctx.fill();
+    for (let i = 0; i < 44; i++) {
+      ctx.fillStyle = '#f9ebc6';
+      ctx.fillRect((i * 83) % 780, (i * 47) % 235, 2, 2);
+    }
+    ctx.fillStyle = '#102d30';
+    ctx.beginPath();
+    ctx.moveTo(0, 300);
+    for (let x = 0; x <= 780; x += 30) ctx.lineTo(x, 260 + Math.sin(x / 65) * 45);
+    ctx.lineTo(780, 420);
+    ctx.lineTo(0, 420);
+    ctx.fill();
+    for (let x = 0; x < 780; x += 55) {
+      ctx.fillStyle = '#071f23';
+      ctx.beginPath();
+      ctx.moveTo(x, 350);
+      ctx.lineTo(x + 24, 190 + (x % 120));
+      ctx.lineTo(x + 48, 350);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#fff0c5';
+    ctx.font = 'bold 42px Georgia';
+    ctx.fillText('THE MOONLIT COAST', 40, 380);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  const upload = {
+    name: 'fictional-edition.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(artwork, 'base64'),
+  };
   const violations: string[] = [];
   page.on('pageerror', (error) => violations.push(error.message));
   page.on('console', (message) => {
@@ -28,14 +71,14 @@ test('owner onboarding, fictional shelves, favorites, mixed collections, and sou
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).not.toBeVisible();
   await page.getByRole('button', { name: 'Spines', exact: true }).click();
-  await expect(page.locator('.shelf-items.spines')).toHaveCount(6);
+  await expect(page.locator('.shelf-items.spines')).toHaveCount(7);
   if (info.project.name === 'desktop')
     await page
       .locator('.shelf-group')
       .first()
       .screenshot({ path: 'docs/screenshots/desktop-spines.jpg', type: 'jpeg', quality: 85 });
   await page.getByRole('button', { name: 'Covers', exact: true }).click();
-  await expect(page.locator('.shelf-items.covers')).toHaveCount(6);
+  await expect(page.locator('.shelf-items.covers')).toHaveCount(7);
   if (info.project.name === 'desktop')
     await page
       .locator('.shelf-group')
@@ -74,6 +117,11 @@ test('owner onboarding, fictional shelves, favorites, mixed collections, and sou
   await expect(page.locator('#favorite')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#favorite svg')).toHaveCSS('fill', 'rgb(163, 49, 72)');
   await expect(page.locator('.detail-cover .object > .favorite-mark')).toBeVisible();
+  const artForm = page.locator('#item-artwork-form');
+  await artForm.getByLabel('Artwork type').selectOption('spine');
+  await artForm.getByLabel('Artwork image', { exact: true }).setInputFiles(upload);
+  await artForm.getByRole('button', { name: 'Save artwork', exact: true }).click();
+  await expect(artForm.locator('.artwork-result')).toContainText('Artwork saved');
   await page.keyboard.press('Escape');
   const favoriteBook = page
     .locator('.shelf-items .item-open')
@@ -105,6 +153,41 @@ test('owner onboarding, fictional shelves, favorites, mixed collections, and sou
   await page.getByRole('button', { name: 'Collections', exact: true }).click();
   await page.getByLabel('Collection', { exact: true }).selectOption({ label: name + ' (2)' });
   await expect(page.locator('.shelf-items .item')).toHaveCount(2);
+  await page.getByRole('button', { name: '+ New collection', exact: true }).click();
+  const boxSet = 'Fictional DVD set ' + info.project.name;
+  await page.getByLabel('Collection name').fill(boxSet);
+  await page.getByRole('button', { name: 'Create collection', exact: true }).click();
+  await page.getByRole('button', { name: 'Entrance', exact: true }).click();
+  for (const title of ['The Observatory', 'Across the Amber Field', 'Night Train to Anywhere']) {
+    await page
+      .getByRole('button', { name: 'View ' + title, exact: true })
+      .first()
+      .click();
+    await page.getByLabel(boxSet, { exact: true }).check();
+    await page.keyboard.press('Escape');
+  }
+  await page.getByRole('button', { name: 'Collections', exact: true }).click();
+  await page.getByLabel('Collection', { exact: true }).selectOption({ label: boxSet + ' (3)' });
+  await page.getByLabel('Box-set panorama').setInputFiles(upload);
+  await page.getByRole('button', { name: 'Save panorama', exact: true }).click();
+  await expect(page.locator('.panorama-art img')).toHaveCount(3);
+  await expect(page.locator('.panorama-art img').first()).toHaveCSS('width', '132px');
+  await page.mouse.move(0, 0);
+  if (info.project.name === 'desktop') {
+    const shelf = page.locator('.shelf-group');
+    await shelf.evaluate((element) =>
+      element.scrollIntoView({ block: 'center', behavior: 'instant' }),
+    );
+    await page.mouse.move(1, 1);
+    const clip = (await shelf.boundingBox())!;
+    await page.screenshot({
+      path: 'docs/screenshots/desktop-panorama.jpg',
+      type: 'jpeg',
+      quality: 85,
+      clip,
+      animations: 'disabled',
+    });
+  }
   await page.getByRole('button', { name: 'Connections', exact: true }).click();
   await page.getByLabel('Service', { exact: true }).selectOption('jellyfin');
   await expect(page.getByLabel('Jellyfin username', { exact: true })).toBeVisible();
@@ -136,11 +219,27 @@ test('owner onboarding, fictional shelves, favorites, mixed collections, and sou
   const connection = page.locator('.connection').filter({
     has: page.getByRole('heading', { name: 'Fixture comics ' + info.project.name, exact: true }),
   });
+  await connection.getByRole('button', { name: 'Map libraries', exact: true }).click();
+  await connection
+    .getByRole('combobox', { name: 'Comics room', exact: true })
+    .selectOption('manga');
+  await connection.getByRole('button', { name: 'Save library rooms', exact: true }).click();
+  await expect(connection.locator('.library-mapping [role=status]')).toContainText(
+    'Library rooms saved',
+  );
   await connection.getByRole('button', { name: 'Synchronize', exact: true }).click();
   await expect(connection.locator('.health')).toHaveText('ready', { timeout: 15000 });
   await page.getByRole('button', { name: 'Return to my library', exact: true }).click();
-  await page.getByRole('button', { name: 'Comics', exact: true }).first().click();
-  await page.getByRole('button', { name: 'View Fixture Comic', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Manga', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Covers', exact: true }).click();
+  const comicCover = page.getByRole('button', { name: 'View Fixture Comic', exact: true }).first();
+  await expect(comicCover.locator('.object > img')).toBeVisible();
+  expect(
+    await comicCover
+      .locator('.object > img')
+      .evaluate((img) => (img as HTMLImageElement).naturalWidth),
+  ).toBeGreaterThan(0);
+  await comicCover.click();
   await expect(page.getByRole('button', { name: /Read in source/ })).toBeEnabled();
   const sourceUrl = readFileSync('test-results/e2e-source.txt', 'utf8') + '/book/comic-1';
   await page.route(sourceUrl, (route) =>

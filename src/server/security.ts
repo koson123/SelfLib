@@ -114,6 +114,7 @@ export function sourceTransport(
     path: string,
     init?: { method?: string; body?: unknown },
     limit = 8 * 1024 * 1024,
+    accept = 'application/json',
   ) {
     if (!path.startsWith('/') || path.startsWith('//') || /[\\]/.test(path))
       throw new Error('Adapter requested an invalid path.');
@@ -151,7 +152,7 @@ export function sourceTransport(
         method: init?.method || 'GET',
         headers: {
           ...headers,
-          Accept: 'application/json',
+          Accept: accept,
           ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
         },
         body: init?.body ? JSON.stringify(init.body) : undefined,
@@ -208,7 +209,7 @@ export function sourceTransport(
       }
     },
     async image(path: string) {
-      const r = await send(path, undefined, 512 * 1024);
+      const r = await send(path, undefined, 512 * 1024, 'image/jpeg, image/png, image/webp');
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(r.mime))
         throw new Error('Source artwork format is unsupported.');
       return r;

@@ -42,6 +42,7 @@ export const fixtures = {
     content: [
       {
         id: 'comic-1',
+        libraryId: 'comic-lib',
         name: 'Volume 1',
         seriesTitle: 'Fixture Harbor',
         media: { pagesCount: 100 },
@@ -118,6 +119,21 @@ export async function fixtureServer() {
       url.pathname.includes('/cover') ||
       url.pathname.includes('/Images/')
     ) {
+      if (!req.headers.accept?.includes('image/')) {
+        res.writeHead(406);
+        res.end('{}');
+        return;
+      }
+      const expected = url.pathname.startsWith('/api/v')
+        ? req.headers['x-api-key']
+        : url.pathname.startsWith('/api/')
+          ? req.headers.authorization?.replace('Bearer ', '')
+          : req.headers['x-emby-token'];
+      if (expected !== secret) {
+        res.writeHead(401);
+        res.end('{}');
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'image/png' });
       res.end(png);
       return;
@@ -126,6 +142,11 @@ export async function fixtureServer() {
       '/api/me': fixtures.absMe,
       '/api/libraries': fixtures.absLibraries,
       '/api/libraries/lib-1/items': fixtures.absPage,
+      '/api/v1/libraries': [
+        { id: 'comic-lib', name: 'Comics', root: '/private-library-root' },
+        { id: 'manga-lib', name: 'Manga' },
+        { id: 'graphic-lib', name: 'Graphic Novels' },
+      ],
       '/api/v2/users/me': fixtures.komgaMe,
       '/api/v1/books/list': fixtures.komgaPage,
       '/Users/Me': fixtures.jellyMe,

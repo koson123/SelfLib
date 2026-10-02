@@ -128,6 +128,14 @@ export const demoItems: CatalogItem[] = [
     'A fictional mystery on a train without a destination.',
     0,
   ],
+  [
+    'comics',
+    'graphicnovel',
+    'The Glass Forest',
+    'Lea Hollow',
+    'A fictional illustrated journey through a forest of glass.',
+    0,
+  ],
 ].map((row, i) => ({
   sourceId: 'demo',
   sourceItemId: `demo-${i}`,

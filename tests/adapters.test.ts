@@ -119,6 +119,7 @@ test('adapter pagination advances actual library/page and offset cursors', async
             Items: [{ Id: 'movie-1', Name: 'Fixture', Type: 'Movie' }],
             TotalRecordCount: 2,
           } as T;
+        if (path === '/api/v1/libraries') return [] as T;
         if (path === '/api/libraries')
           return {
             libraries: [
@@ -177,4 +178,102 @@ test('Komga manga labels come from explicit book tags without guessing titles or
   } finally {
     await server.close();
   }
+});
+
+test('image negotiation reproduces Komga HTTP 406 and uses image Accept rather than JSON', async () => {
+  const server = await fixtureServer();
+  try {
+    const source: SourceConfig = {
+      id: 'test',
+      type: 'komga',
+      name: 'test',
+      url: server.url,
+      publicUrl: server.url,
+      credential: secret,
+      allowPrivate: true,
+    };
+    const transport = sourceTransport(source, { 'X-API-Key': secret }, true);
+    await assert.rejects(() => transport.json('/api/v1/books/comic-1/thumbnail'), /HTTP 406/);
+    assert.equal((await transport.image('/api/v1/books/comic-1/thumbnail')).mime, 'image/png');
+    assert.match(String(server.requests.at(-1)!.headers.accept), /image\/jpeg/);
+  } finally {
+    await server.close();
+  }
+});
+test('Komga library identity maps rooms before tags, with exact-name automatic defaults', async () => {
+  const server = await fixtureServer();
+  try {
+    const source: SourceConfig = {
+      id: 'test',
+      type: 'komga',
+      name: 'test',
+      url: server.url,
+      publicUrl: server.url,
+      credential: secret,
+      allowPrivate: true,
+      libraryRooms: { 'comic-lib': 'graphicnovels' },
+    };
+    const book = fixtures.komgaPage.content[0];
+    server.setResponse('/api/v1/books/list', {
+      content: [{ ...book, metadata: { ...book.metadata, tags: ['Manga'] } }],
+      last: true,
+    });
+    const mapped = (await createAdapter(source, { allowLoopback: true }).page()).items[0];
+    assert.equal(mapped.kind, 'graphicnovel');
+    assert.equal(mapped.libraryId, 'comic-lib');
+    assert.equal(mapped.libraryName, 'Comics');
+    for (const [libraryId, expected] of [
+      ['manga-lib', 'manga'],
+      ['graphic-lib', 'graphicnovel'],
+    ] as const) {
+      server.setResponse('/api/v1/books/list', { content: [{ ...book, libraryId }], last: true });
+      assert.equal(
+        (await createAdapter({ ...source, libraryRooms: {} }, { allowLoopback: true }).page())
+          .items[0].kind,
+        expected,
+      );
+    }
+  } finally {
+    await server.close();
+  }
+});
+test('Jellyfin prefers available Box artwork and falls back to Primary if the box image is missing', async () => {
+  const images: string[] = [];
+  const source: SourceConfig = {
+    id: 'test',
+    type: 'jellyfin',
+    name: 'test',
+    url: 'https://media.example.org',
+    publicUrl: 'https://media.example.org',
+    credential: secret,
+    allowPrivate: false,
+  };
+  const adapter = createAdapter(source, {
+    transport: {
+      async json<T>(path: string): Promise<T> {
+        return (
+          path === '/Users/Me'
+            ? fixtures.jellyMe
+            : {
+                ...fixtures.jellyPage,
+                Items: [
+                  { ...fixtures.jellyPage.Items[0], ImageTags: { Primary: 'poster', Box: 'box' } },
+                ],
+              }
+        ) as T;
+      },
+      async image(path) {
+        images.push(path);
+        if (path.includes('/Box?')) throw new Error('Source returned HTTP 404.');
+        return { bytes: new Uint8Array(), mime: 'image/png' };
+      },
+    },
+  });
+  const item = (await adapter.page()).items[0];
+  assert.match(item.artworkPath!, /\/Box\?/);
+  await adapter.artwork(item);
+  assert.deepEqual(
+    images.map((path) => path.split('?')[0]),
+    ['/Items/movie-1/Images/Box', '/Items/movie-1/Images/Primary'],
+  );
 });

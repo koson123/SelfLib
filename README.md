@@ -8,7 +8,8 @@ SelfLib **0.1.0** is a single-owner first milestone. It connects to **Audiobooks
 
 ## What works
 
-- Responsive entrance and separate Books, Audiobooks, Comics, Manga, Movies, and TV Shows shelves. Komga Manga classification requires an explicit book `Manga` tag.
+- Responsive entrance and separate Books, Audiobooks, Comics, Manga, Graphic Novels, Movies, and TV Shows shelves. Komga rooms follow configurable library mappings.
+- Full illustrated spine uploads, continuous artwork across ordered box-set collections, private cover overrides and DVD-style cases. Jellyfin Box artwork is preferred where supplied, with existing-cover fallback. No automatic third-party DVD or fan-art scraping.
 - Physical wooden bookcases with backboards, side posts and a plank under every row. Spine-first browsing, varied book heights/thicknesses, pull-out hover/focus interactions, a cover view, and keyboard-accessible detail dialogs.
 - Full-text metadata search, persistent favorites with filled animated hearts that move with covers, and mixed collections.
 - Source-reported reading/listening/watching progress as of the last manual sync.
@@ -50,6 +51,8 @@ For LAN or HTTPS access, set `APP_URL` to the exact root URL used by your browse
 These screenshots are captured from the running fictional demo; no source credentials or personal collections appear.
 
 ![Spine titles and binding details](docs/screenshots/desktop-spines.jpg)
+
+![Continuous artwork across fictional DVD cases](docs/screenshots/desktop-panorama.jpg)
 
 ![Filled favorite heart and confirmation](docs/screenshots/desktop-favorite.jpg)
 

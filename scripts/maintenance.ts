@@ -1,3 +1,4 @@
+import { SCHEMA_VERSION } from '../src/server/db.js';
 import { DatabaseSync, backup } from 'node:sqlite';
 import {
   existsSync,
@@ -21,7 +22,10 @@ if (existsSync(join(directory, 'server.lock')))
     'Service lock exists. Stop SelfLib before offline maintenance. If a crash left a stale lock, confirm all services using this volume are stopped before removing server.lock.',
   );
 const db = new DatabaseSync(filename);
-if ((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version !== 1) {
+if (
+  (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version !==
+  SCHEMA_VERSION
+) {
   db.close();
   throw new Error('Unsupported maintenance schema. Use the matching version.');
 }

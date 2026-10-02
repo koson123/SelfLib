@@ -11,12 +11,15 @@ export interface CatalogItem {
   sourceId: string;
   sourceItemId: string;
   section: Section;
-  kind: 'book' | 'audiobook' | 'comic' | 'manga' | 'movie' | 'show' | 'episode';
+  kind: 'book' | 'audiobook' | 'comic' | 'manga' | 'graphicnovel' | 'movie' | 'show' | 'episode';
   title: string;
   creator: string;
   description: string;
   series?: string;
+  libraryId?: string;
+  libraryName?: string;
   artworkPath?: string;
+  artworkFallbackPath?: string;
   progress?: Progress;
   actions: { open: Capability; progress: Capability; embeddedPlayback: 'unsupported' };
 }
@@ -28,6 +31,7 @@ export interface SourceConfig {
   publicUrl: string;
   credential: string;
   allowPrivate: boolean;
+  libraryRooms?: Record<string, 'comics' | 'manga' | 'graphicnovels'>;
 }
 export interface Page {
   items: CatalogItem[];
@@ -46,10 +50,12 @@ export interface Adapter {
   artwork(item: CatalogItem): Promise<{ bytes: Uint8Array; mime: string } | undefined>;
   handoff(item: CatalogItem): string;
 }
-export interface ItemView extends Omit<CatalogItem, 'artworkPath'> {
+export interface ItemView extends Omit<CatalogItem, 'artworkPath' | 'artworkFallbackPath'> {
   id: string;
   favorite: boolean;
   artwork: boolean;
+  customCover?: boolean;
+  customSpine?: boolean;
   demo: boolean;
   sourceName: string;
 }
@@ -60,6 +66,7 @@ export const shelfCategories = [
   'audiobooks',
   'comics',
   'manga',
+  'graphicnovels',
   'movies',
   'shows',
 ] as const;
@@ -69,6 +76,7 @@ export const categoryKinds: Record<ShelfCategory, CatalogItem['kind'][]> = {
   audiobooks: ['audiobook'],
   comics: ['comic'],
   manga: ['manga'],
+  graphicnovels: ['graphicnovel'],
   movies: ['movie'],
   shows: ['show', 'episode'],
 };

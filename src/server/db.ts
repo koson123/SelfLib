@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export function openDatabase(directory: string) {
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   const filename = join(directory, 'selflib.sqlite');
@@ -38,6 +38,18 @@ export function openDatabase(directory: string) {
       CREATE TABLE migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
       INSERT INTO migrations VALUES (1, datetime('now'));
       PRAGMA user_version=1;
+      COMMIT;`);
+  }
+  if (version < 2) {
+    db.exec(`BEGIN IMMEDIATE;
+      ALTER TABLE sources ADD COLUMN library_rooms TEXT NOT NULL DEFAULT '{}';
+      CREATE TABLE item_artwork (item_id TEXT REFERENCES items(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK(role IN ('cover','spine')), bytes BLOB NOT NULL, mime TEXT NOT NULL,
+        PRIMARY KEY(item_id,role));
+      CREATE TABLE collection_artwork (collection_id TEXT PRIMARY KEY REFERENCES collections(id) ON DELETE CASCADE,
+        bytes BLOB NOT NULL, mime TEXT NOT NULL);
+      INSERT INTO migrations VALUES (2, datetime('now'));
+      PRAGMA user_version=2;
       COMMIT;`);
   }
   return db;

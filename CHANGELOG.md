@@ -1,5 +1,15 @@
 # Changelog
 
+## Artwork and library routing follow-up (unreleased)
+
+- Fixed image Accept negotiation; Komga thumbnails no longer use a JSON-only header that causes HTTP 406.
+- Added actual Komga library IDs/names and owner-configurable Comics/Manga/Graphic Novels mappings.
+- Added DVD-style cases and Jellyfin Box artwork preference with Primary fallback.
+- Added private cover/spine uploads, full-surface spine rendering and continuous box-set panoramas in insertion order.
+- Added shared cache accounting and clear-downloaded-cover controls; source assets and custom artwork remain separate.
+- Added transactional schema 1 → 2 migration and matching offline maintenance support.
+- No automatic Internet DVD/fan-art lookup or copied reference artwork is included.
+
 ## Follow-up fixes on the 0.1.0 implementation branch
 
 - Corrected Komga identity checks to `/api/v2/users/me`; fixtures now reject the incorrect v1 route.

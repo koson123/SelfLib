@@ -17,7 +17,7 @@ The authenticated owner saves an encrypted connection. An adapter identifies the
 
 Items have stable SHA-256 identities derived from source UUID and remote item ID. Source item IDs remain available for handoff. When a successfully synchronized source removes an item, its local favorites/collection memberships cascade away. A failed or partial sync never treats unseen items as deletions.
 
-Catalog search and pagination happen in SQLite; the browser receives at most 100 items per request. Entrance previews fetch six items per presentation category. `ShelfCategory` maps normalized `kind` to Books, Audiobooks, Comics, Manga, Movies, or TV Shows; API `category` filters the existing JSON metadata in SQLite. Coarse source sections and item identities remain stable. Source requests use checked/pinned DNS, hardcoded endpoint paths, no redirects, deadlines and body limits. One safe retry is attempted for a failed page request caused by reachability or HTTP 5xx. No retry is attempted for invalid authentication, schema mismatch or unsafe destinations.
+Catalog search and pagination happen in SQLite; the browser receives at most 100 items per request. Entrance previews fetch six items per presentation category. `ShelfCategory` maps normalized `kind` to Books, Audiobooks, Comics, Manga, Graphic Novels, Movies, or TV Shows; API `category` filters the existing JSON metadata in SQLite. Coarse source sections and item identities remain stable. Source requests use checked/pinned DNS, hardcoded endpoint paths, no redirects, deadlines and body limits. One safe retry is attempted for a failed page request caused by reachability or HTTP 5xx. No retry is attempted for invalid authentication, schema mismatch or unsafe destinations.
 
 ## Adapter contract
 
@@ -53,3 +53,13 @@ Schema version 1 is created transactionally for a new database and recorded in `
 ## Resource bounds
 
 10 connections, one sync concurrently, 100 records/page, 10,000 records/100 pages/source, two-minute sync budget, 10-second requests, 8 MiB JSON responses, 512 KiB raster artwork, 200 uncached artwork attempts/sync, 64 MiB total artwork. Reading all full metadata into a bounded staging array avoids partial-catalog commits; a future streaming staging table can reduce memory for larger libraries. The cache is bounded but not a media offline store.
+
+## Artwork and library-room decisions
+
+Schema 2 adds `sources.library_rooms` and `item_artwork`/`collection_artwork` BLOB tables. Foreign keys cascade custom item images and panoramas when their local parents are removed. Upstream caches and custom overrides are separate; synchronization never overwrites a custom image. A source image endpoint change invalidates its cached thumbnail. `artworkBytes()` includes all three storage locations in one budget.
+
+Komga's library list is loaded once per adapter instance, stripped to ID/name, and joined against BookDto.libraryId. Owner mappings take precedence over narrow name defaults and explicit book tags. Filesystem root/path properties are discarded. This corrects the earlier assumption that every installation would tag individual books.
+
+Collection ordering uses membership rowid (insertion order); default catalog ordering is unchanged. Single-room, single-mode collections with 2–18 members may use a panorama. An authenticated, no-store CSS endpoint emits only generated/validated item selectors and numeric slice dimensions. It accepts no arbitrary CSS, URLs, or source destinations and avoids relaxing the CSP for inline styles. Browser CSS performs rendering; the server stores and serves bounded raster bytes without image transformation libraries.
+
+Optional Jellyfin Box images have a Primary-image fallback. DVD shells are a visual choice, not an inferred edition or new metadata provider. Third-party cover scraping and automatic spine-art discovery remain unsupported. Public screenshots use original fictional illustrations, not the uploaded personal/reference images.
