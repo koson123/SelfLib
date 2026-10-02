@@ -20,7 +20,12 @@ Node 24.19.0, Linux x64. Standard Playwright browser download returned an invali
 
 ## Container and compatibility checks
 
-The workspace has no Docker daemon, so **local Docker build/Compose smoke were not executed**. The PR's CI separately builds `linux/amd64`, starts a fresh Compose volume, creates the owner, checks authentication, restarts and checks favorite persistence. Inspect the actual PR check outcome; a configured workflow alone is not evidence of a successful container build. No registry image is currently advertised as available.
+The workspace has no Docker daemon, so **local Docker build/Compose smoke were not executed**. Container verification was performed successfully by GitHub CI: [run 37029714703](https://github.com/koson123/SelfLib/actions/runs/37029714703), application commit `fab7a39b330d9a2872871a0665e26af2240a0d20`. Both jobs passed:
+
+- **Container:** real `linux/amd64` Docker build, fresh production Compose volume, setup-token/owner authentication, protected catalog, favorite persistence after restart, logout and disposable cleanup.
+- **Application:** clean npm install, strict types/lint, all 11 Node tests, reproducible license notices, production build/native smoke, standard Playwright Chromium installation and all three responsive browser journeys. Fictional screenshots are retained as a CI artifact.
+
+This evidence verifies the declared AMD64 image dependencies and installation path; it does not imply ARM64 or live-source compatibility. No registry image has been published. The later documentation-only evidence commit does not change the verified application or container inputs.
 
 Only Linux AMD64 is the declared container target. Native Linux x64 Node/SQLite/FTS5 are tested. ARM64, native Windows server execution, real iPhone/iPad Safari, other browser engines, live reverse-proxy/certificate installation, and real upstream server versions are unverified. Phone/tablet Chromium viewport tests do not prove iOS compatibility.
 
