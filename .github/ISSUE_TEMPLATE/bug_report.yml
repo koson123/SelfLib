@@ -1,0 +1,24 @@
+name: Bug report
+description: Report a reproducible SelfLib issue with fictional or redacted data.
+body:
+  - type: input
+    id: version
+    attributes:
+      label: SelfLib version and installation method
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps, expected result and actual result
+      description: Never include credentials, personal media or a database backup.
+    validations:
+      required: true
+  - type: input
+    id: service
+    attributes:
+      label: Source service/version and browser/OS, if relevant
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted logs or fictional fixture
