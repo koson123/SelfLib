@@ -1,0 +1,49 @@
+{
+  "name": "selflib",
+  "version": "0.1.0",
+  "description": "A self-hosted virtual library connecting your existing media services",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node dist/server.js",
+    "dev": "npm run build && node --import tsx src/server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests scripts playwright.config.ts && prettier --check src tests scripts docs *.md *.json *.mjs playwright.config.ts .github",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "format": "prettier --write src tests scripts docs *.md *.json *.mjs .github"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/koson123/SelfLib.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/koson123/SelfLib/issues"
+  },
+  "homepage": "https://github.com/koson123/SelfLib#readme",
+  "dependencies": {
+    "express": "5.2.1",
+    "undici": "8.11.2",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@playwright/test": "1.63.0",
+    "@types/express": "5.0.6",
+    "@types/node": "26.6.4",
+    "esbuild": "0.28.2",
+    "eslint": "9.39.5",
+    "prettier": "3.9.9",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.71.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=24.15.0 <25"
+  }
+}

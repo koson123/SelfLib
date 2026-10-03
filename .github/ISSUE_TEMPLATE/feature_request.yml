@@ -1,0 +1,13 @@
+name: Feature or integration request
+description: Describe a library experience or documented integration capability.
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: User problem and desired behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Official API documentation, limitations and alternative approaches
