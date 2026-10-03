@@ -16,6 +16,10 @@ export interface CatalogItem {
   creator: string;
   description: string;
   series?: string;
+  /** Authoritative upstream series identity; never group by title. */
+  parentSourceItemId?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
   libraryId?: string;
   libraryName?: string;
   artworkPath?: string;
@@ -58,6 +62,8 @@ export interface ItemView extends Omit<CatalogItem, 'artworkPath' | 'artworkFall
   customSpine?: boolean;
   demo: boolean;
   sourceName: string;
+  episodeCount?: number;
+  resumeEpisode?: { id: string; title: string; progress: Progress };
 }
 
 /** Presentation rooms are separate from the stable source section identity. */

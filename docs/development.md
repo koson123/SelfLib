@@ -19,7 +19,7 @@ Open `http://localhost:3000`. The default data directory is `./data` (ignored by
 - `node scripts/licenses.mjs`: regenerate and validate runtime dependency notices after installing an updated lockfile.
 - `node scripts/native-smoke.mjs`: exercise the compiled production server with a disposable temporary directory, including setup and restart persistence. Run the build first.
 - `npm run build`: actual production server/browser build; all browser assets copied locally.
-- `npx playwright install --with-deps chromium` then `npm run test:e2e`: owner/demo/connection/collections browser flows at desktop, phone and tablet viewports.
+- `npx playwright install --with-deps chromium` then `npm run build` and `npm run test:e2e`: owner/demo/connection/collections browser flows at desktop, phone and tablet viewports.
 - `docker compose --env-file .env.example up -d --build` then `node scripts/container-smoke.mjs`: **disposable fresh volume only**; creates a fixture owner and tests restart/persistence. Afterwards `docker compose down -v` only for that disposable install.
 
 Browser tests create temporary data and fixture servers, not real service connections. They record fictional-demo screenshots in `docs/screenshots`. `CHROMIUM_EXECUTABLE` optionally selects an installed Chromium binary for constrained environments; it does not change supported browser claims. `playwright.config.ts` contains the viewport matrix; phone/tablet Chromium emulation is not real iOS Safari verification.

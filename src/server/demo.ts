@@ -151,3 +151,25 @@ export const demoItems: CatalogItem[] = [
     embeddedPlayback: 'unsupported',
   },
 })) as CatalogItem[];
+
+// Stable fictional series identities demonstrate a real box-set hierarchy.
+const demoShow = demoItems.find((item) => item.kind === 'show')!;
+const demoEpisode = demoItems.find((item) => item.kind === 'episode')!;
+demoEpisode.parentSourceItemId = demoShow.sourceItemId;
+demoEpisode.series = demoShow.title;
+demoEpisode.seasonNumber = 1;
+demoEpisode.episodeNumber = 2;
+for (const [season, episode, title] of [
+  [1, 1, 'The Key'],
+  [1, 3, 'The Storm'],
+  [2, 1, 'The Return'],
+] as const) {
+  demoItems.push({
+    ...demoEpisode,
+    sourceItemId: `demo-tv-${season}-${episode}`,
+    title,
+    seasonNumber: season,
+    episodeNumber: episode,
+    progress: episode === 1 && season === 1 ? { fraction: 1, unit: 'fraction' } : undefined,
+  });
+}

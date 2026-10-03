@@ -9,7 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createApplication } from '../src/server/app.js';
 import { openDatabase } from '../src/server/db.js';
 import { fixtureServer, secret, fixtures, png } from './fixtures.js';
-import type { SourceType } from '../src/shared.js';
+import type { SourceType, ItemView } from '../src/shared.js';
 
 async function harness(
   dir = mkdtempSync(join(tmpdir(), 'selflib-test-')),
@@ -803,6 +803,103 @@ test('Komga library mapping is configurable, survives connection editing, and st
   } finally {
     await h.close();
     await server.close();
+    rmSync(h.dir, { recursive: true, force: true });
+  }
+});
+
+test('show shelves group authoritative series identities, paginate discs, resume latest unfinished episode and retain offline metadata', async () => {
+  const h = await harness();
+  const fixture = await fixtureServer();
+  const episode = (
+    id: string,
+    season: number | undefined,
+    index: number | undefined,
+    position: number,
+    date: string,
+    parent = 'show-1',
+  ) => ({
+    Id: id,
+    Name: 'Shared episode title',
+    Type: 'Episode',
+    SeriesId: parent,
+    SeriesName: 'Fixture Show',
+    ParentIndexNumber: season,
+    IndexNumber: index,
+    RunTimeTicks: 10000000000,
+    UserData: {
+      PlaybackPositionTicks: position,
+      Played: position === 10000000000,
+      LastPlayedDate: date,
+    },
+  });
+  fixture.setResponse('/Items', {
+    Items: [
+      fixtures.jellyPage.Items[1],
+      { Id: 'show-2', Name: 'Fixture Show', Type: 'Series' },
+      episode('ep-special', 0, 1, 0, '2026-01-01'),
+      episode('ep-old', 1, 2, 1000000000, '2026-01-01'),
+      episode('ep-new', 2, 1, 2000000000, '2026-02-01'),
+      episode('ep-watched', 2, 2, 10000000000, '2026-03-01'),
+      episode('ep-unknown', undefined, undefined, 0, '2026-01-01'),
+      episode('ep-other', 1, 1, 3000000000, '2026-04-01', 'show-2'),
+    ],
+    TotalRecordCount: 8,
+  });
+  try {
+    assert.equal((await h.request('/api/items/nope/episodes')).response.status, 401);
+    await h.setup();
+    const saved = await h.request('/api/sources', 'POST', {
+      type: 'jellyfin',
+      name: 'Fixture',
+      url: fixture.url,
+      publicUrl: 'https://media.example.org',
+      credential: secret,
+      allowPrivate: true,
+    });
+    const sourceId = String(saved.json.id);
+    await h.request('/api/sources/' + sourceId + '/sync', 'POST', {});
+    await waitSync(h, sourceId);
+    const shelf = (await h.request('/api/items?category=shows')).json as unknown as {
+      total: number;
+      items: ItemView[];
+    };
+    assert.equal(shelf.total, 2);
+    const show = shelf.items.find((i) => i.sourceItemId === 'show-1')!;
+    assert.equal(show.episodeCount, 5);
+    assert.equal(show.resumeEpisode!.progress.fraction, 0.2);
+    const children = (await h.request('/api/items/' + show.id + '/episodes?limit=2'))
+      .json as unknown as { total: number; items: ItemView[]; resume: ItemView };
+    assert.equal(children.total, 5);
+    assert.equal(children.items.length, 2);
+    assert.equal(children.items[0].seasonNumber, 0);
+    assert.equal(children.resume.sourceItemId, 'ep-new');
+    assert.equal(children.resume.parentSourceItemId, 'show-1');
+    const next = (await h.request('/api/items/' + show.id + '/episodes?offset=2&limit=2'))
+      .json as unknown as { items: ItemView[] };
+    assert.equal(next.items[0].sourceItemId, 'ep-new');
+    assert.equal(next.items[0].episodeNumber, 1);
+    assert.equal(
+      (await h.request('/api/items/' + children.resume.id + '/open')).json.url,
+      'https://media.example.org/web/#/details?id=ep-new',
+    );
+    assert.equal((await h.request('/api/items?continue=true')).json.total, 2);
+    assert.equal((await h.request('/api/items?q=Shared')).json.total, 6);
+    await h.request('/api/items/' + children.resume.id + '/favorite', 'PUT', { favorite: true });
+    assert.equal(
+      ((await h.request('/api/items?favorite=true')).json.items as ItemView[])[0].sourceItemId,
+      'ep-new',
+    );
+    fixture.setFailure(true);
+    await h.request('/api/sources/' + sourceId + '/sync', 'POST', {});
+    assert.equal((await waitSync(h, sourceId)).health, 'unreachable');
+    assert.equal((await h.request('/api/items/' + show.id + '/episodes')).json.total, 5);
+    assert.equal(
+      (await h.request('/api/items/' + show.id + '/episodes?limit=101')).response.status,
+      400,
+    );
+  } finally {
+    await fixture.close();
+    await h.close();
     rmSync(h.dir, { recursive: true, force: true });
   }
 });

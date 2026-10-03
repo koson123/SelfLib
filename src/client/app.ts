@@ -1,3 +1,4 @@
+import { bindSleeve, sleeveEditor } from './sleeve.js';
 import { shelfCategories, shelfCategory, type ItemView } from '../shared.js';
 type Status = {
   setupRequired: boolean;
@@ -143,7 +144,7 @@ function cover(item: ItemView, spine = false) {
     ? `<span class="spine-art ${panorama ? 'panorama-art' : ''}" aria-hidden="true">${spineImage ? `<img src="${spineImage}" alt="" loading="lazy">` : artwork || decoration}</span>${!illustrated ? `<span class="spine-title">${escape(item.title)}</span><span class="spine-author" aria-hidden="true">${escape(item.creator || item.kind)}</span>` : ''}`
     : artwork ||
       `<div class="cover-art" aria-hidden="true"><span class="cover-edition">${escape(item.kind)}</span><span class="cover-title">${escape(item.title)}</span><span class="cover-symbol">${symbol}</span><span class="cover-author">${escape(item.creator || 'Your collection')}</span></div>`;
-  return `<div class="object ${spine ? 'spine' : ''} ${illustrated ? 'illustrated-spine' : ''} ${film ? 'film-case dvd-case' : item.section === 'comics' ? 'comic-volume' : 'bound-book'} tone-${tone(item)}">${film ? '<span class="dvd-format" aria-hidden="true">DVD</span>' : ''}${binding}${item.progress ? `<span class="ribbon" title="${Math.round(item.progress.fraction * 100)}% complete"></span>` : ''}${item.favorite ? '<span class="favorite-mark" aria-label="Favorite">♥</span>' : ''}</div>`;
+  return `<div class="object ${spine ? 'spine' : ''} ${illustrated ? 'illustrated-spine' : ''} ${film ? 'film-case dvd-case ' + (item.kind === 'show' ? 'series-box' : '') : item.section === 'comics' ? 'comic-volume' : 'bound-book'} tone-${tone(item)}">${film ? '<span class="case-hinge" aria-hidden="true"></span><span class="case-latch" aria-hidden="true"></span>' : ''}${binding}${item.progress ? `<span class="ribbon" title="${Math.round(item.progress.fraction * 100)}% complete"></span>` : ''}${item.favorite ? '<span class="favorite-mark" aria-label="Favorite">♥</span>' : ''}</div>`;
 }
 
 function itemCard(item: ItemView, compact = false) {
@@ -198,7 +199,7 @@ function shell() {
 async function loadItems(extra = '') {
   if (!status.authenticated) {
     const result = await api<{ items: ItemView[] }>('/demo');
-    let selected = result.items;
+    let selected = result.items.filter((i) => q || i.kind !== 'episode');
     if (shelfCategories.some((category) => category === page))
       selected = selected.filter((i) => shelfCategory(i) === page);
     if (q)
@@ -257,7 +258,13 @@ async function render() {
     if (page === 'home' && !q) {
       continueItems = status.authenticated
         ? (await api<{ items: ItemView[] }>('/items?continue=true&demo=' + demo + '&limit=6')).items
-        : items.filter((i) => i.progress).slice(0, 6);
+        : items
+            .filter(
+              (i) =>
+                i.resumeEpisode ||
+                (i.progress && i.progress.fraction > 0 && i.progress.fraction < 1),
+            )
+            .slice(0, 6);
       items = [...new Map([...items, ...continueItems].map((i) => [i.id, i])).values()];
     }
     if (renderId !== generation) return;
@@ -407,18 +414,32 @@ function showCreateCollection() {
   });
 }
 async function showDetail(item: ItemView) {
-  dialog.innerHTML = `<button class="dialog-close" aria-label="Close">×</button><div class="detail-layout"><div class="detail-cover">${cover(item)}</div><div class="detail-copy"><p class="eyebrow">${escape(item.sourceName)} · ${escape(item.kind)}</p><h2 id="dialog-title">${escape(item.title)}</h2><p class="detail-author">${escape(item.creator)}</p>${item.series ? `<p>Series: ${escape(item.series)}</p>` : ''}<p class="description">${escape(item.description || 'No description is available from this source.')}</p>${item.progress ? `<div class="detail-progress"><progress max="1" value="${item.progress.fraction}" aria-label="Progress"></progress><p>${Math.round(item.progress.fraction * 100)}% complete${item.progress.unit === 'pages' ? ` · page ${item.progress.position}` : item.progress.unit === 'seconds' ? ` · ${Math.floor((item.progress.position || 0) / 60)} minutes in` : ''}<small>${item.demo ? 'Illustrative demo progress' : 'Source progress as of the last synchronization. The source reader/player resumes playback.'}</small></p></div>` : '<p class="quiet">No in-progress position reported by the source.</p>'}<div class="detail-actions"><button id="open-source" class="primary" ${item.actions.open === 'unsupported' ? 'disabled' : ''}>${item.kind === 'audiobook' ? 'Listen' : item.section === 'movies' ? 'Watch' : 'Read'} in source ${icon('arrow')}</button><button id="favorite" aria-pressed="${item.favorite}">${icon('heart')}${item.favorite ? 'Saved' : 'Favorite'}</button></div><p class="quiet">${item.demo ? 'Demo titles are fictional and cannot be read or played.' : 'Opens your configured source app. You may need to sign in there.'}</p><p id="favorite-feedback" class="favorite-feedback" role="status" aria-live="polite"></p><div id="detail-collections"></div>${status.authenticated ? '<form id="item-artwork-form" class="artwork-controls"><h3>Cover and spine artwork</h3><p>Use your own edition artwork. SelfLib keeps this private and leaves the source untouched.</p><label>Artwork type<select name="role"><option value="cover">' + (item.section === 'movies' ? 'DVD cover' : 'Cover') + '</option><option value="spine">Full illustrated spine</option></select></label><label>Artwork image<input type="file" name="image" accept="image/png,image/jpeg,image/webp" required></label><small>PNG, JPEG or WebP, maximum 512 KiB. For a wraparound DVD scan, crop to its front or spine before uploading. Use artwork you have permission to use.</small><button type="submit">Save artwork</button><button id="remove-item-artwork" type="button">Remove selected custom artwork</button><p class="artwork-result" role="status"></p></form>' : ''}</div></div>`;
+  const isShow = item.kind === 'show';
+  dialog.innerHTML = `<button class="dialog-close" aria-label="Close">×</button><div class="detail-layout"><div class="detail-cover">${cover(item)}</div><div class="detail-copy"><p class="eyebrow">${escape(item.sourceName)} · ${escape(item.kind)}</p><h2 id="dialog-title">${escape(item.title)}</h2><p class="detail-author">${escape(item.creator)}</p>${item.series ? `<p>Series: ${escape(item.series)}</p>` : ''}<p class="description">${escape(item.description || 'No description is available from this source.')}</p>${item.progress ? `<div class="detail-progress"><progress max="1" value="${item.progress.fraction}" aria-label="Progress"></progress><p>${Math.round(item.progress.fraction * 100)}% complete${item.progress.unit === 'pages' ? ` · page ${item.progress.position}` : item.progress.unit === 'seconds' ? ` · ${Math.floor((item.progress.position || 0) / 60)} minutes in` : ''}<small>${item.demo ? 'Illustrative demo progress' : 'Source progress as of the last synchronization. The source reader/player resumes playback.'}</small></p></div>` : isShow ? '' : '<p class="quiet">No in-progress position reported by the source.</p>'}${isShow ? `<div id="show-case"><div class="detail-actions"><button id="resume-show" class="primary" ${!item.resumeEpisode ? 'disabled' : ''}>Resume${item.resumeEpisode ? ' · ' + escape(item.resumeEpisode.title) : ''}</button><button id="open-disc-box" aria-expanded="false" aria-controls="disc-box">Open disc box</button></div><p class="quiet">${item.episodeCount ?? 0} synchronized episodes. ${item.resumeEpisode ? 'Resume uses the last synchronized unfinished episode.' : 'No unfinished episode reported. Open the box to choose one.'}</p><div id="disc-box" hidden></div></div>` : ''}<div class="detail-actions"><button id="open-source" class="primary" ${item.actions.open === 'unsupported' ? 'disabled' : ''}>${item.kind === 'audiobook' ? 'Listen' : item.kind === 'show' ? 'Open show' : item.section === 'movies' ? 'Watch' : 'Read'} in source ${icon('arrow')}</button><button id="favorite" aria-pressed="${item.favorite}">${icon('heart')}${item.favorite ? 'Saved' : 'Favorite'}</button></div><p class="quiet">${item.demo ? 'Demo titles are fictional and cannot be read or played.' : 'Opens your configured source app. You may need to sign in there.'}</p><p id="favorite-feedback" class="favorite-feedback" role="status" aria-live="polite"></p><div id="detail-collections"></div>${status.authenticated ? '<form id="item-artwork-form" class="artwork-controls"><h3>Cover and spine artwork</h3><p>Use your own edition artwork. SelfLib keeps this private and leaves the source untouched.</p><label>Artwork type<select name="role" aria-label="Artwork type"><option value="cover">' + (item.section === 'movies' ? 'Front sleeve / cover' : 'Cover') + '</option><option value="spine">Full illustrated spine</option>' + (item.section === 'movies' ? '<option value="sleeve">Wraparound sleeve scan (front + spine)</option>' : '') + '</select></label><label>Artwork image<input type="file" name="image" accept="image/png,image/jpeg,image/webp" required></label><small>PNG, JPEG or WebP, maximum 512 KiB. For a wraparound DVD scan, choose Wraparound sleeve scan to preview and crop its front and printed spine. Use artwork you have permission to use.</small>' + (item.section === 'movies' ? sleeveEditor : '') + '<button type="submit">Save artwork</button><button id="remove-item-artwork" type="button">Remove selected custom artwork</button><p class="artwork-result" role="status"></p></form>' : ''}</div></div>`;
   openDialog();
+  if (isShow) bindDiscBox(item);
   const artworkForm = dialog.querySelector<HTMLFormElement>('#item-artwork-form');
   if (artworkForm) {
+    const cropSleeve = bindSleeve(artworkForm);
     const updateArt = async (method: string) => {
       const role = String(formValues(artworkForm).role);
       try {
-        await api(
-          '/items/' + item.id + '/custom-artwork/' + role,
-          method,
-          method === 'PUT' ? await imagePayload(artworkForm) : {},
-        );
+        if (role === 'sleeve') {
+          if (method !== 'PUT')
+            throw new Error('Choose Cover or Spine to remove that image individually.');
+          const [front, spine] = await cropSleeve();
+          await api('/items/' + item.id + '/custom-artwork/cover', 'PUT', front);
+          artworkForm.querySelector('.artwork-result')!.textContent =
+            'Front saved; saving printed spine…';
+          await api('/items/' + item.id + '/custom-artwork/spine', 'PUT', spine).catch((error) => {
+            throw new Error('Front saved, but spine failed: ' + error.message);
+          });
+        } else
+          await api(
+            '/items/' + item.id + '/custom-artwork/' + role,
+            method,
+            method === 'PUT' ? await imagePayload(artworkForm) : {},
+          );
         await render();
         const updated = items.find((candidate) => candidate.id === item.id);
         if (updated && dialog.open) {
@@ -427,7 +448,9 @@ async function showDetail(item: ItemView) {
         }
         artworkForm.querySelector('.artwork-result')!.textContent =
           method === 'PUT'
-            ? 'Artwork saved. Switch to Spines to see a spine image.'
+            ? role === 'sleeve'
+              ? 'Actual sleeve front and printed spine saved. Switch to Spines to see the spine.'
+              : 'Artwork saved. Switch to Spines to see a spine image.'
             : 'Custom artwork removed; source artwork is retained.';
       } catch (error) {
         artworkForm.querySelector('.artwork-result')!.textContent = (error as Error).message;
@@ -496,6 +519,93 @@ async function showDetail(item: ItemView) {
       notice((error as Error).message);
     }
   }
+}
+function bindDiscBox(show: ItemView) {
+  const box = dialog.querySelector<HTMLElement>('#disc-box')!;
+  const toggle = dialog.querySelector<HTMLButtonElement>('#open-disc-box')!;
+  let episodeOffset = 0;
+  let selectedSeason: number | undefined;
+  const handoff = async (id: string) => {
+    if (show.demo) {
+      notice('Demo episodes are fictional and cannot be played.');
+      return;
+    }
+    const { url } = await api<{ url: string }>('/items/' + encodeURIComponent(id) + '/open');
+    const target = new URL(url);
+    if (!['http:', 'https:'].includes(target.protocol)) throw new Error('Unsafe action URL.');
+    window.location.assign(target.toString());
+  };
+  dialog.querySelector<HTMLButtonElement>('#resume-show')!.addEventListener('click', (event) =>
+    busy(event.currentTarget as HTMLButtonElement, async () => {
+      if (show.resumeEpisode) await handoff(show.resumeEpisode.id);
+    }),
+  );
+  const load = async () => {
+    box.innerHTML = '<p role="status">Opening the disc case…</p>';
+    try {
+      const result = status.authenticated
+        ? await api<{ items: ItemView[]; total: number }>(
+            '/items/' + show.id + '/episodes?offset=' + episodeOffset + '&limit=100',
+          )
+        : await api<{ items: ItemView[] }>('/demo').then((result) => {
+            const episodes = result.items.filter((e) => e.parentSourceItemId === show.sourceItemId);
+            return {
+              items: episodes.slice(episodeOffset, episodeOffset + 100),
+              total: episodes.length,
+            };
+          });
+      if (!dialog.open || !box.isConnected) return;
+      const seasons = [...new Set(result.items.map((e) => e.seasonNumber ?? -1))].sort(
+        (a, b) => a - b,
+      );
+      if (selectedSeason === undefined || !seasons.includes(selectedSeason))
+        selectedSeason = seasons[0];
+      const name = (season: number) =>
+        season === 0 ? 'Specials' : season === -1 ? 'Unnumbered' : 'Season ' + season;
+      box.innerHTML = `<div class="disc-case-interior"><div class="disc-case-lid"><span class="eyebrow">${escape(show.title)}</span><h3>Your box set</h3><p>Choose a season disc, then an episode.</p><div class="season-discs" role="group" aria-label="Season discs">${seasons.map((season) => `<button class="season-disc" data-season="${season}" aria-pressed="${season === selectedSeason}"><span class="disc-surface" aria-hidden="true"><span class="disc-hole"></span></span><strong>${name(season)}</strong></button>`).join('')}</div></div><div class="disc-tray"><h3>${selectedSeason === undefined ? 'No episodes synchronized' : name(selectedSeason)}</h3><div class="episode-list">${result.items
+        .filter((e) => (e.seasonNumber ?? -1) === selectedSeason)
+        .map(
+          (e) =>
+            `<button class="episode-track" data-episode="${escape(e.id)}"><span class="track-number">${e.episodeNumber ?? '—'}</span><span><strong>${escape(e.title)}</strong><small>${e.progress?.fraction === 1 ? 'Watched' : e.progress && e.progress.fraction > 0 ? Math.round(e.progress.fraction * 100) + '% watched · Resume' : 'Open in Jellyfin'}</small></span><span aria-hidden="true">▶</span></button>`,
+        )
+        .join(
+          '',
+        )}</div><p class="quiet">${show.demo ? 'Fictional demo discs; playback is unavailable.' : 'SelfLib’s discs group episodes by season; they do not claim to match a retail edition’s disc layout.'}</p></div></div>${result.total > 100 ? `<div class="pagination"><button id="episode-prev" ${!episodeOffset ? 'disabled' : ''}>Previous episodes</button><span>${episodeOffset + 1}–${Math.min(episodeOffset + 100, result.total)} of ${result.total}</span><button id="episode-next" ${episodeOffset + 100 >= result.total ? 'disabled' : ''}>Next episodes</button></div>` : ''}`;
+      box.querySelectorAll<HTMLButtonElement>('[data-season]').forEach((button) =>
+        button.addEventListener('click', () => {
+          selectedSeason = Number(button.dataset.season);
+          void load();
+        }),
+      );
+      box
+        .querySelectorAll<HTMLButtonElement>('[data-episode]')
+        .forEach((button) =>
+          button.addEventListener('click', () =>
+            busy(button, () => handoff(button.dataset.episode!)),
+          ),
+        );
+      box.querySelector('#episode-prev')?.addEventListener('click', () => {
+        episodeOffset = Math.max(0, episodeOffset - 100);
+        void load();
+      });
+      box.querySelector('#episode-next')?.addEventListener('click', () => {
+        episodeOffset += 100;
+        void load();
+      });
+    } catch (error) {
+      box.innerHTML =
+        '<p role="alert">' +
+        escape((error as Error).message) +
+        '</p><button id="retry-episodes">Try again</button>';
+      box.querySelector('#retry-episodes')?.addEventListener('click', () => void load());
+    }
+  };
+  toggle.addEventListener('click', () => {
+    box.hidden = !box.hidden;
+    toggle.setAttribute('aria-expanded', String(!box.hidden));
+    toggle.textContent = box.hidden ? 'Open disc box' : 'Close disc box';
+    if (!box.hidden) void load();
+  });
 }
 function openDialog() {
   if (!dialog.open) dialog.showModal();

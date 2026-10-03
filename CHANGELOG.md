@@ -2,6 +2,10 @@
 
 ## Artwork and library routing follow-up (unreleased)
 
+- TV episodes now live inside source-identified series boxes with season discs, paged tracks and Resume from the latest unfinished source episode.
+- Actual wraparound sleeve scans can be previewed and cropped into front/spine artwork in the browser. Removed synthetic DVD branding and modeled hinges, latches and box-set edges.
+- Automatic retail sleeve discovery remains unavailable; source posters are fallback artwork.
+
 - Fixed image Accept negotiation; Komga thumbnails no longer use a JSON-only header that causes HTTP 406.
 - Added actual Komga library IDs/names and owner-configurable Comics/Manga/Graphic Novels mappings.
 - Added DVD-style cases and Jellyfin Box artwork preference with Primary fallback.

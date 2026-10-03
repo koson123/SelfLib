@@ -85,6 +85,32 @@ test('owner onboarding, fictional shelves, favorites, mixed collections, and sou
       .first()
       .screenshot({ path: 'docs/screenshots/desktop-covers.jpg', type: 'jpeg', quality: 85 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'TV shows', exact: true }).first().click();
+  await expect(page.locator('.shelf-items .item')).toHaveCount(1);
+  await page.getByRole('button', { name: 'View A House by the Tide', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Resume · A House/ })).toBeEnabled();
+  await page.getByRole('button', { name: 'Open disc box', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Season 1', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.locator('.episode-track')).toHaveCount(3);
+  const discBounds = (await page.locator('.disc-surface').first().boundingBox())!;
+  expect(Math.abs(discBounds.width - discBounds.height)).toBeLessThan(1);
+  await page.getByRole('button', { name: 'Season 2', exact: true }).click();
+  await expect(page.locator('.episode-track')).toHaveCount(1);
+  await expect(page.locator('.episode-track')).toContainText('The Return');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  if (info.project.name === 'desktop')
+    await page.screenshot({
+      path: 'docs/screenshots/desktop-disc-box.jpg',
+      type: 'jpeg',
+      quality: 85,
+      animations: 'disabled',
+    });
+  await page.getByRole('button', { name: 'Close disc box', exact: true }).click();
+  await expect(page.locator('#disc-box')).toBeHidden();
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Create my library', exact: true }).click();
   const setup = await page.getByRole('heading', { name: 'Make this library yours' }).isVisible();
   await page.getByLabel('Username', { exact: true }).fill('reader');
@@ -188,6 +214,18 @@ test('owner onboarding, fictional shelves, favorites, mixed collections, and sou
       animations: 'disabled',
     });
   }
+  await page.getByRole('button', { name: 'Entrance', exact: true }).click();
+  await page.getByRole('button', { name: 'View The Observatory', exact: true }).first().click();
+  await page.getByLabel('Artwork type', { exact: true }).selectOption('sleeve');
+  await page.getByLabel('Artwork image', { exact: true }).setInputFiles(upload);
+  await expect(page.locator('.sleeve-editor [role=status]')).toContainText('Preview: front sleeve');
+  await page.getByRole('button', { name: 'Save artwork', exact: true }).click();
+  await expect(page.locator('#item-artwork-form .artwork-result')).toContainText(
+    'Actual sleeve front and printed spine saved',
+  );
+  await expect(page.locator('.detail-cover .dvd-format')).toHaveCount(0);
+  await expect(page.locator('.detail-cover img')).toHaveJSProperty('naturalWidth', 360);
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Connections', exact: true }).click();
   await page.getByLabel('Service', { exact: true }).selectOption('jellyfin');
   await expect(page.getByLabel('Jellyfin username', { exact: true })).toBeVisible();

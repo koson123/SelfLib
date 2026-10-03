@@ -78,7 +78,10 @@ const jellyItem = z.object({
   Name: z.string(),
   Type: z.enum(['Movie', 'Series', 'Episode']),
   Overview: z.string().optional(),
-  SeriesName: z.string().optional(),
+  SeriesName: z.string().nullish(),
+  SeriesId: idSchema.nullish(),
+  ParentIndexNumber: z.number().int().nonnegative().nullish(),
+  IndexNumber: z.number().int().nonnegative().nullish(),
   RunTimeTicks: z.number().optional(),
   People: z.array(z.object({ Name: z.string(), Type: z.string() })).optional(),
   ImageTags: z.object({ Primary: z.string().optional(), Box: z.string().optional() }).optional(),
@@ -316,6 +319,9 @@ export function createAdapter(
           ),
           description: text(item.Overview),
           series: text(item.SeriesName, 500),
+          parentSourceItemId: item.Type === 'Episode' ? item.SeriesId || undefined : undefined,
+          seasonNumber: item.ParentIndexNumber ?? undefined,
+          episodeNumber: item.IndexNumber ?? undefined,
           artworkPath:
             item.ImageTags?.Box || item.ImageTags?.Primary
               ? `/Items/${item.Id}/Images/${item.ImageTags.Box ? 'Box' : 'Primary'}?maxWidth=360&quality=80`

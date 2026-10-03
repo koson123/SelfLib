@@ -259,13 +259,31 @@ export function createApplication(options: AppOptions) {
   });
   app.get('/api/demo', (_req, res) => {
     res.json({
-      items: demoItems.map((item, i) => ({
+      items: demoItems.map((item) => ({
         ...withoutArtwork(item),
-        id: `demo-${i}`,
+        id: item.sourceItemId,
         favorite: false,
         artwork: false,
         demo: true,
         sourceName: 'Fictional demonstration',
+        ...(item.kind === 'show'
+          ? {
+              episodeCount: demoItems.filter((e) => e.parentSourceItemId === item.sourceItemId)
+                .length,
+              resumeEpisode: (() => {
+                const e = demoItems.find(
+                  (e) =>
+                    e.parentSourceItemId === item.sourceItemId &&
+                    e.progress &&
+                    e.progress.fraction > 0 &&
+                    e.progress.fraction < 1,
+                );
+                return e?.progress
+                  ? { id: e.sourceItemId, title: e.title, progress: e.progress }
+                  : undefined;
+              })(),
+            }
+          : {}),
       })),
       total: demoItems.length,
     });
@@ -600,6 +618,39 @@ export function createApplication(options: AppOptions) {
     jobs.set(s.id, job);
     res.status(202).json({ ok: true });
   });
+  const childWhere =
+    "i.source_id=? AND i.demo=? AND json_extract(i.data,'$.kind')='episode' AND json_extract(i.data,'$.parentSourceItemId')=?";
+  function childParams(item: CatalogItem, demo: boolean) {
+    return [item.sourceId, demo ? 1 : 0, item.sourceItemId];
+  }
+  function showChildren(item: CatalogItem, demo: boolean, limit = 100, offset = 0) {
+    return db
+      .prepare(
+        `SELECT i.*,s.name AS source_name,f.item_id AS favorite FROM items i
+      LEFT JOIN sources s ON s.id=i.source_id LEFT JOIN favorites f ON f.item_id=i.id
+      WHERE ${childWhere} ORDER BY coalesce(json_extract(i.data,'$.seasonNumber'),999999),
+      coalesce(json_extract(i.data,'$.episodeNumber'),999999),i.title,i.id LIMIT ? OFFSET ?`,
+      )
+      .all(...childParams(item, demo), limit, offset) as Row[];
+  }
+  function childCount(item: CatalogItem, demo: boolean) {
+    return Number(
+      db
+        .prepare(`SELECT count(*) AS n FROM items i WHERE ${childWhere}`)
+        .get(...childParams(item, demo))!.n,
+    );
+  }
+  function resumeChild(item: CatalogItem, demo: boolean) {
+    return db
+      .prepare(
+        `SELECT i.*,s.name AS source_name,f.item_id AS favorite FROM items i
+      LEFT JOIN sources s ON s.id=i.source_id LEFT JOIN favorites f ON f.item_id=i.id
+      WHERE ${childWhere} AND json_extract(i.data,'$.progress.fraction')>0 AND json_extract(i.data,'$.progress.fraction')<1
+      ORDER BY coalesce(julianday(json_extract(i.data,'$.progress.updatedAt')),0) DESC,
+      coalesce(json_extract(i.data,'$.seasonNumber'),999999), coalesce(json_extract(i.data,'$.episodeNumber'),999999),i.id LIMIT 1`,
+      )
+      .get(...childParams(item, demo)) as Row | undefined;
+  }
   function view(row: Row): ItemView {
     const item = JSON.parse(String(row.data)) as CatalogItem;
     return {
@@ -618,6 +669,18 @@ export function createApplication(options: AppOptions) {
         .prepare("SELECT 1 FROM item_artwork WHERE item_id=? AND role='spine'")
         .get(String(row.id)),
       demo: !!row.demo,
+      ...(item.kind === 'show'
+        ? (() => {
+            const resume = resumeChild(item, !!row.demo);
+            const episode = resume ? (JSON.parse(String(resume.data)) as CatalogItem) : undefined;
+            return {
+              episodeCount: childCount(item, !!row.demo),
+              resumeEpisode: episode?.progress
+                ? { id: String(resume!.id), title: episode.title, progress: episode.progress }
+                : undefined,
+            };
+          })()
+        : {}),
       sourceName: String(row.source_name || 'Fictional demonstration'),
     };
   }
@@ -626,6 +689,13 @@ export function createApplication(options: AppOptions) {
     const offset = z.coerce.number().int().min(0).max(100000).default(0).parse(req.query.offset);
     const mode = req.query.demo === 'true' ? 1 : 0;
     const where = ['i.demo=?'];
+    if (
+      !req.query.q &&
+      req.query.favorite !== 'true' &&
+      !req.query.collection &&
+      req.query.continue !== 'true'
+    )
+      where.push("json_extract(i.data,'$.kind')!='episode'");
     const params: (string | number)[] = [mode];
     const query = z.string().max(200).optional().parse(req.query.q);
     if (query?.trim()) {
@@ -652,7 +722,8 @@ export function createApplication(options: AppOptions) {
     }
     if (req.query.continue === 'true')
       where.push(
-        "json_extract(i.data,'$.progress.fraction')>0 AND json_extract(i.data,'$.progress.fraction')<1",
+        `((json_extract(i.data,'$.kind')!='episode' AND json_extract(i.data,'$.progress.fraction')>0 AND json_extract(i.data,'$.progress.fraction')<1)
+        OR (json_extract(i.data,'$.kind')='show' AND EXISTS (SELECT 1 FROM items e WHERE e.source_id=i.source_id AND e.demo=i.demo AND json_extract(e.data,'$.parentSourceItemId')=i.remote_id AND json_extract(e.data,'$.kind')='episode' AND json_extract(e.data,'$.progress.fraction')>0 AND json_extract(e.data,'$.progress.fraction')<1)))`,
       );
     const sql = `FROM items i LEFT JOIN sources s ON s.id=i.source_id LEFT JOIN favorites f ON f.item_id=i.id WHERE ${where.join(' AND ')}`;
     const total = (db.prepare(`SELECT count(*) AS n ${sql}`).get(...params) as Row).n;
@@ -666,6 +737,26 @@ export function createApplication(options: AppOptions) {
       )
       .all(...params, ...orderParams, limit, offset) as Row[];
     res.json({ items: rows.map(view), total, offset, limit });
+  });
+  app.get('/api/items/:id/episodes', (req, res) => {
+    const row = db.prepare('SELECT * FROM items WHERE id=?').get(String(req.params.id)) as
+      Row | undefined;
+    if (!row || (JSON.parse(String(row.data)) as CatalogItem).kind !== 'show') {
+      res.status(404).json({ error: 'Show not found.' });
+      return;
+    }
+    const offset = z.coerce.number().int().min(0).max(100000).default(0).parse(req.query.offset);
+    const limit = z.coerce.number().int().min(1).max(100).default(100).parse(req.query.limit);
+    const item = JSON.parse(String(row.data)) as CatalogItem;
+    const rows = showChildren(item, !!row.demo, limit, offset);
+    const resume = resumeChild(item, !!row.demo);
+    res.json({
+      items: rows.map(view),
+      total: childCount(item, !!row.demo),
+      offset,
+      limit,
+      resume: resume ? view(resume) : undefined,
+    });
   });
   mountArtwork(app, db, options.cacheBytes || 64 * 1024 * 1024);
   app.get('/api/items/:id/artwork', (req, res) => {
