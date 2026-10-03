@@ -163,6 +163,9 @@ for (const [season, episode, title] of [
   [1, 1, 'The Key'],
   [1, 3, 'The Storm'],
   [2, 1, 'The Return'],
+  [3, 1, 'The Lighthouse'],
+  [4, 1, 'The Winter Guest'],
+  [5, 1, 'The Last Tide'],
 ] as const) {
   demoItems.push({
     ...demoEpisode,

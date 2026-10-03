@@ -89,25 +89,47 @@ test('owner onboarding, fictional shelves, favorites, mixed collections, and sou
   await expect(page.locator('.shelf-items .item')).toHaveCount(1);
   await page.getByRole('button', { name: 'View A House by the Tide', exact: true }).click();
   await expect(page.getByRole('button', { name: /Resume · A House/ })).toBeEnabled();
+  let discReads = 0;
+  page.on('request', (request) => {
+    if (request.url().includes('/api/demo') || request.url().includes('/episodes?')) discReads++;
+  });
   await page.getByRole('button', { name: 'Open disc box', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Season 1', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
   await expect(page.locator('.episode-track')).toHaveCount(3);
-  const discBounds = (await page.locator('.disc-surface').first().boundingBox())!;
-  expect(Math.abs(discBounds.width - discBounds.height)).toBeLessThan(1);
-  await page.getByRole('button', { name: 'Season 2', exact: true }).click();
+  const readsBeforeFlipping = discReads;
+  const discSize = await page.locator('.tray-position-current .disc-surface').evaluate((el) => {
+    const style = getComputedStyle(el);
+    return [style.width, style.height];
+  });
+  expect(discSize[0]).toBe(discSize[1]);
+  await expect(page.getByRole('button', { name: 'Previous disc', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Next disc', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Season 2', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.getByRole('button', { name: 'Season 2', exact: true }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('button', { name: 'Season 3', exact: true })).toBeFocused();
+  await expect(page.locator('.episode-track')).toContainText('The Lighthouse');
+  await page.keyboard.press('ArrowLeft');
   await expect(page.locator('.episode-track')).toHaveCount(1);
   await expect(page.locator('.episode-track')).toContainText('The Return');
+  expect(discReads).toBe(readsBeforeFlipping);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(page.locator('.tray-position-current')).toHaveCSS('transition-duration', '0s');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  if (info.project.name === 'desktop')
-    await page.screenshot({
-      path: 'docs/screenshots/desktop-disc-box.jpg',
-      type: 'jpeg',
-      quality: 85,
-      animations: 'disabled',
-    });
+  if (info.project.name !== 'desktop') await page.locator('.case-stage').scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: `docs/screenshots/${info.project.name}-disc-box.jpg`,
+    type: 'jpeg',
+    quality: 85,
+    animations: 'disabled',
+  });
   await page.getByRole('button', { name: 'Close disc box', exact: true }).click();
   await expect(page.locator('#disc-box')).toBeHidden();
   await page.keyboard.press('Escape');

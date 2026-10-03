@@ -2,6 +2,8 @@
 
 ## Artwork and library routing follow-up (unreleased)
 
+- Replaced the flat season-button picker with a layered multi-disc case: molded shell, individual trays, CSS perspective/flip transitions, Previous/Next, keyboard arrows, reduced-motion support and local episode selection.
+
 - TV episodes now live inside source-identified series boxes with season discs, paged tracks and Resume from the latest unfinished source episode.
 - Actual wraparound sleeve scans can be previewed and cropped into front/spine artwork in the browser. Removed synthetic DVD branding and modeled hinges, latches and box-set edges.
 - Automatic retail sleeve discovery remains unavailable; source posters are fallback artwork.

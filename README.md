@@ -9,7 +9,7 @@ SelfLib **0.1.0** is a single-owner first milestone. It connects to **Audiobooks
 ## What works
 
 - Responsive entrance and separate Books, Audiobooks, Comics, Manga, Graphic Novels, Movies, and TV Shows shelves. Komga rooms follow configurable library mappings.
-- TV series box sets with Resume, season discs and nested episode selection. Episodes stay searchable without cluttering the main shelves.
+- TV series box sets with Resume, hinged disc trays you can flip through and nested episode selection. Episodes stay searchable without cluttering the main shelves.
 - Real wraparound sleeve import with front/spine crop previews; no synthetic DVD banner.
 - Full illustrated spine uploads, continuous artwork across ordered box-set collections, private cover overrides and DVD-style cases. Jellyfin Box artwork is preferred where supplied, with existing-cover fallback. No automatic third-party DVD or fan-art scraping.
 - Physical wooden bookcases with backboards, side posts and a plank under every row. Spine-first browsing, varied book heights/thicknesses, pull-out hover/focus interactions, a cover view, and keyboard-accessible detail dialogs.

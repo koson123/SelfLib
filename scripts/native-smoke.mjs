@@ -86,7 +86,7 @@ try {
   start();
   await ready();
   assert.equal((await call('/api/items')).response.status, 401);
-  assert.equal((await call('/api/demo')).json.items.length, 20);
+  assert.equal((await call('/api/demo')).json.items.length, 23);
   assert.equal((await call('/api/status')).json.setupRequired, true);
   const password = 'disposable-native-smoke-password';
   const setupToken = readFileSync(join(directory, 'setup.token'), 'utf8');

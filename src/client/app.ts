@@ -562,21 +562,77 @@ function bindDiscBox(show: ItemView) {
         selectedSeason = seasons[0];
       const name = (season: number) =>
         season === 0 ? 'Specials' : season === -1 ? 'Unnumbered' : 'Season ' + season;
-      box.innerHTML = `<div class="disc-case-interior"><div class="disc-case-lid"><span class="eyebrow">${escape(show.title)}</span><h3>Your box set</h3><p>Choose a season disc, then an episode.</p><div class="season-discs" role="group" aria-label="Season discs">${seasons.map((season) => `<button class="season-disc" data-season="${season}" aria-pressed="${season === selectedSeason}"><span class="disc-surface" aria-hidden="true"><span class="disc-hole"></span></span><strong>${name(season)}</strong></button>`).join('')}</div></div><div class="disc-tray"><h3>${selectedSeason === undefined ? 'No episodes synchronized' : name(selectedSeason)}</h3><div class="episode-list">${result.items
-        .filter((e) => (e.seasonNumber ?? -1) === selectedSeason)
-        .map(
-          (e) =>
-            `<button class="episode-track" data-episode="${escape(e.id)}"><span class="track-number">${e.episodeNumber ?? '—'}</span><span><strong>${escape(e.title)}</strong><small>${e.progress?.fraction === 1 ? 'Watched' : e.progress && e.progress.fraction > 0 ? Math.round(e.progress.fraction * 100) + '% watched · Resume' : 'Open in Jellyfin'}</small></span><span aria-hidden="true">▶</span></button>`,
-        )
-        .join(
-          '',
-        )}</div><p class="quiet">${show.demo ? 'Fictional demo discs; playback is unavailable.' : 'SelfLib’s discs group episodes by season; they do not claim to match a retail edition’s disc layout.'}</p></div></div>${result.total > 100 ? `<div class="pagination"><button id="episode-prev" ${!episodeOffset ? 'disabled' : ''}>Previous episodes</button><span>${episodeOffset + 1}–${Math.min(episodeOffset + 100, result.total)} of ${result.total}</span><button id="episode-next" ${episodeOffset + 100 >= result.total ? 'disabled' : ''}>Next episodes</button></div>` : ''}`;
-      box.querySelectorAll<HTMLButtonElement>('[data-season]').forEach((button) =>
-        button.addEventListener('click', () => {
-          selectedSeason = Number(button.dataset.season);
-          void load();
-        }),
-      );
+      const tracks = () =>
+        result.items
+          .filter((e) => (e.seasonNumber ?? -1) === selectedSeason)
+          .map(
+            (e) =>
+              `<button class="episode-track" data-episode="${escape(e.id)}"><span class="track-number">${e.episodeNumber ?? '—'}</span><span><strong>${escape(e.title)}</strong><small>${e.progress?.fraction === 1 ? 'Watched' : e.progress && e.progress.fraction > 0 ? Math.round(e.progress.fraction * 100) + '% watched · Resume' : show.demo ? 'Fictional demo episode' : 'Open in Jellyfin'}</small></span><span aria-hidden="true">▶</span></button>`,
+          )
+          .join('');
+      box.innerHTML = `<div class="disc-case-interior"><div class="case-stage" role="group" aria-label="Hinged multi-disc case"><div class="case-shell case-shell-left" aria-hidden="true"><span class="case-sleeve-title">${escape(show.title)}</span><span class="case-retaining-clip"></span></div><div class="case-shell case-shell-right" aria-hidden="true"><span class="case-retaining-clip"></span></div><div class="case-binding" aria-hidden="true"></div><div class="season-discs" role="group" aria-label="Season discs">${seasons.map((season) => `<button class="season-disc" data-season="${season}" aria-label="${name(season)}" aria-pressed="${season === selectedSeason}"><span class="tray-molding" aria-hidden="true"></span><span class="disc-surface ${show.artwork ? 'printed-disc' : ''}" aria-hidden="true">${show.artwork ? `<img src="/api/items/${encodeURIComponent(show.id)}/artwork" alt="" loading="lazy">` : ''}<span class="disc-print">${escape(show.title)}</span><span class="disc-hole"></span><span class="disc-caption">${name(season)}</span></span><span class="tray-tab" aria-hidden="true">${name(season)}</span></button>`).join('')}</div><div class="case-ground-shadow" aria-hidden="true"></div></div><div class="disc-flip-controls"><button id="previous-disc" aria-label="Previous disc">← Previous disc</button><p id="disc-position" role="status" aria-live="polite"></p><button id="next-disc" aria-label="Next disc">Next disc →</button></div><p class="disc-instructions">Flip through the hinged trays, or select a visible disc. Keyboard: use the Previous/Next buttons or left/right arrows on a tray.</p><div class="disc-tray"><h3 id="selected-disc-title">${selectedSeason === undefined ? 'No episodes synchronized' : name(selectedSeason)}</h3><div class="episode-list">${tracks()}</div><p class="quiet">${show.demo ? 'Fictional demo discs; playback is unavailable.' : 'Illustrative disc labels. Each tray groups one season; retail disc layouts and disc artwork are not inferred.'}</p></div></div>${result.total > 100 ? `<div class="pagination"><button id="episode-prev" ${!episodeOffset ? 'disabled' : ''}>Previous episodes</button><span>${episodeOffset + 1}–${Math.min(episodeOffset + 100, result.total)} of ${result.total}</span><button id="episode-next" ${episodeOffset + 100 >= result.total ? 'disabled' : ''}>Next episodes</button></div>` : ''}`;
+      const bindTracks = () =>
+        box
+          .querySelectorAll<HTMLButtonElement>('[data-episode]')
+          .forEach((button) =>
+            button.addEventListener('click', () =>
+              busy(button, () => handoff(button.dataset.episode!)),
+            ),
+          );
+      const updateTrays = () => {
+        const index = seasons.indexOf(selectedSeason!);
+        box.querySelectorAll<HTMLButtonElement>('[data-season]').forEach((button, trayIndex) => {
+          const distance = Math.max(-3, Math.min(3, trayIndex - index));
+          button.className =
+            'season-disc tray-position-' +
+            (distance < 0
+              ? 'before' + Math.abs(distance)
+              : distance > 0
+                ? 'after' + distance
+                : 'current');
+          button.setAttribute('aria-pressed', String(trayIndex === index));
+          button.tabIndex = trayIndex === index ? 0 : -1;
+        });
+        box.querySelector<HTMLButtonElement>('#previous-disc')!.disabled = index <= 0;
+        box.querySelector<HTMLButtonElement>('#next-disc')!.disabled =
+          index < 0 || index >= seasons.length - 1;
+        box.querySelector('#disc-position')!.textContent =
+          index < 0
+            ? 'No discs synchronized'
+            : 'Disc ' + (index + 1) + ' of ' + seasons.length + ' · ' + name(selectedSeason!);
+        box.querySelector('#selected-disc-title')!.textContent =
+          index < 0 ? 'No episodes synchronized' : name(selectedSeason!);
+      };
+      const selectDisc = (index: number, focusTray = false) => {
+        if (index < 0 || index >= seasons.length) return;
+        selectedSeason = seasons[index];
+        updateTrays();
+        box.querySelector('.episode-list')!.innerHTML = tracks();
+        bindTracks();
+        if (focusTray)
+          box
+            .querySelector<HTMLButtonElement>('[data-season="' + selectedSeason + '"]')!
+            .focus({ preventScroll: true });
+      };
+      updateTrays();
+      box.querySelectorAll<HTMLButtonElement>('[data-season]').forEach((button, index) => {
+        button.addEventListener('click', () => selectDisc(index, true));
+        button.addEventListener('keydown', (event) => {
+          if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+            event.preventDefault();
+            selectDisc(
+              seasons.indexOf(selectedSeason!) + (event.key === 'ArrowRight' ? 1 : -1),
+              true,
+            );
+          }
+        });
+      });
+      box
+        .querySelector('#previous-disc')!
+        .addEventListener('click', () => selectDisc(seasons.indexOf(selectedSeason!) - 1));
+      box
+        .querySelector('#next-disc')!
+        .addEventListener('click', () => selectDisc(seasons.indexOf(selectedSeason!) + 1));
       box
         .querySelectorAll<HTMLButtonElement>('[data-episode]')
         .forEach((button) =>

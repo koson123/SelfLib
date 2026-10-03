@@ -51,15 +51,15 @@ Handoff URLs are constructed and validated in tests. Actual resume remains sourc
 
 ## Resource measurements and estimates
 
-Measured on the clean native production smoke install, with **20 fictional items and no cached source covers**:
+Measured on the clean native production smoke install, with **23 fictional items and no cached source covers**:
 
 | Measurement                            | Observed                                                                                                                         |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Node RSS after setup                   | About 67.2 MiB (70,430,720 bytes), sampled through `process.memoryUsage()` from the production child; not whole-container memory |
+| Node RSS after setup                   | About 68.8 MiB (72,138,752 bytes), sampled through `process.memoryUsage()` from the production child; not whole-container memory |
 | SQLite after graceful stop             | 139,264 bytes                                                                                                                    |
 | Runtime npm dependencies on disk       | About 15 MiB                                                                                                                     |
-| Compiled output including maps         | About 392 KiB                                                                                                                    |
-| Browser JavaScript / CSS, uncompressed | 42,153 / 42,537 bytes; no mandatory font download                                                                                |
+| Compiled output including maps         | About 404 KiB                                                                                                                    |
+| Browser JavaScript / CSS, uncompressed | 44,432 / 47,588 bytes; no mandatory font download                                                                                |
 
 These numbers are not large-library or homelab load tests. Reserve **256–768 MiB RAM** and roughly one available CPU core during sync/build as an initial estimate; Compose limits runtime to 768 MiB / one CPU. Password scrypt briefly uses additional memory/CPU. Metadata staging is bounded to 10,000 items per source; descriptions can make staging much larger than the demo. Synchronous transactions/password work can pause requests in this single-owner design.
 
@@ -72,3 +72,5 @@ Outstanding measurements: real-source initial/incremental sync at 1k/10k items, 
 Added fixtures for authoritative series relationships (including duplicate series titles), episode ordering, specials/missing numbers, bounded pagination, latest unfinished resume vs completed episodes, search/favorites preservation and cached hierarchy during source failures. Browser journeys cover anonymous and owner demo boxes, season selection, opening/closing the case, front/spine crop previews and saved front image dimensions. No user artwork is published: the sleeve crop test uses the same original synthetic forest painting as the panorama fixture. `desktop-disc-box.jpg` shows the actual app with fictional data.
 
 Artwork-provider research: [Jellyfin image naming](https://jellyfin.org/docs/general/server/media/movies/) labels Box unused. [Fanart.tv documented API v3](https://fanart.tv/api-docs/api-v3/) exposes movie posters and disc artwork, not a verified retail wraparound front/spine scan provider. No third-party provider is added or advertised.
+
+The physical case follow-up verifies next/previous tray selection, left/right keyboard navigation and focus, zero additional catalog requests while flipping, reduced-motion transition suppression and no viewport overflow. Five fictional season discs demonstrate the layered trays. Rendering uses CSS transforms in the browser, with no new runtime dependency, WebGL engine, server renderer or bundled reference photograph.

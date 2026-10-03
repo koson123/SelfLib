@@ -38,3 +38,5 @@ The illustrated-spine follow-up inspected official Komga OpenAPI BookDto.library
 Inspection references for this follow-up: Komga `2ab7a5a61a8b8bb12a6edd576fed380b4b613c99` (`komga/docs/openapi.json`) and Jellyfin `305a96471509f11de4d3a93e1ea268d4fd2af76c` (`MediaBrowser.Model/Entities/ImageType.cs`). These are read-only API/enum inspections; no code or assets were reused.
 
 The TV hierarchy correction also inspected `MediaBrowser.Model/Dto/BaseItemDto.cs` at Jellyfin commit `305a96471509f11de4d3a93e1ea268d4fd2af76c` for SeriesId, ParentIndexNumber and IndexNumber. No upstream code/assets copied. Sleeve crop fixtures reuse SelfLib's original moonlit painting, not retail scans or user images. Read-only artwork-provider research is linked in docs/verification.md; no provider integration or downloaded artwork was added.
+
+The hinged multi-disc case is original HTML/CSS geometry. The uploaded reference product photo was used only to understand the case structure and was not copied into code, screenshots, packages or the repository. Disc labels are generated from source metadata; source covers remain private authenticated artwork.
